@@ -4,12 +4,14 @@ import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { useRRPPAssignments, useRRPPEvents, useReservations } from '@/hooks/useSupabaseData';
 import PRGuestForm from '@/components/PRGuestForm';
+import TicketSelector from '@/components/TicketSelector';
 
 export default function RRPPDashboard() {
   const { user } = useAuth();
   const { data: assignments, isLoading: loadingAssignments } = useRRPPAssignments(user?.id);
   const { data: assignedEvents, isLoading: loadingEvents } = useRRPPEvents(user?.id);
   const [activeIdx, setActiveIdx] = useState(0);
+  const [rrppTab, setRrppTab] = useState<'guest'|'sell'>('guest');
   const activeEvent = assignedEvents?.[activeIdx];
 
   const { data: rrppReservations } = useReservations({
@@ -79,7 +81,19 @@ export default function RRPPDashboard() {
         ))}
       </div>
 
-      {activeEvent && <PRGuestForm eventId={activeEvent.id} eventTitle={activeEvent.title} />}
+      {activeEvent && (
+        <div className="flex gap-2 bg-secondary p-1 rounded-xl w-max mx-auto my-4 transition-all overflow-hidden items-center justify-center">
+          <button onClick={() => setRrppTab('guest')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${rrppTab === 'guest' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            Generar Pase
+          </button>
+          <button onClick={() => setRrppTab('sell')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${rrppTab === 'sell' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+            Vender Entradas
+          </button>
+        </div>
+      )}
+
+      {activeEvent && rrppTab === 'guest' && <PRGuestForm eventId={activeEvent.id} eventTitle={activeEvent.title} allowGuests={activeEvent.allow_rrpp_guests} />}
+      {activeEvent && rrppTab === 'sell' && <TicketSelector eventId={activeEvent.id} eventTitle={activeEvent.title} ticketTypes={activeEvent.ticket_types || []} asRRPP={true} />}
 
       {rrppReservations && rrppReservations.length > 0 && (
         <div className="glass-card p-4 space-y-3">

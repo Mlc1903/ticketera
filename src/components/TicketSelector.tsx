@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Minus, Plus, ShoppingCart, LogIn } from 'lucide-react';
+import { Minus, Plus, ShoppingCart, LogIn, Download, Info } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -12,10 +12,13 @@ interface Props {
   ticketTypes: Tables<'ticket_types'>[];
   eventId: string;
   eventTitle: string;
+  asRRPP?: boolean;
 }
 
-export default function TicketSelector({ ticketTypes, eventId, eventTitle }: Props) {
+export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRPP }: Props) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
+  const [showPayment, setShowPayment] = useState(false);
+  const [qrDownloaded, setQrDownloaded] = useState(false);
   const [purchased, setPurchased] = useState(false);
   const [codes, setCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
@@ -33,64 +36,111 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle }: Pro
   const total = ticketTypes.reduce((sum, tt) => sum + (quantities[tt.id] || 0) * tt.price, 0);
   const totalQty = Object.values(quantities).reduce((s, q) => s + q, 0);
 
-  const handlePurchase = async () => {
+  const handleRequestPurchase = async () => {
     if (!user) return;
     setLoading(true);
-    const newCodes: string[] = [];
+
+    const typesToRequest = ticketTypes
+      .filter(tt => quantities[tt.id] > 0)
+      .map(tt => ({
+        ticket_type_id: tt.id,
+        quantity: quantities[tt.id],
+        price: tt.price,
+        name: tt.name,
+        type: tt.type
+      }));
+
+    if (typesToRequest.length === 0) {
+      setLoading(false);
+      return;
+    }
 
     try {
-      for (const tt of ticketTypes) {
-        const qty = quantities[tt.id] || 0;
-        if (qty === 0) continue;
+      const { error } = await supabase.from('purchase_requests' as any).insert({
+        event_id: eventId,
+        user_id: user.id,
+        rrpp_id: asRRPP ? user.id : null,
+        ticket_types: typesToRequest,
+        total_amount: total
+      });
 
-        for (let i = 0; i < qty; i++) {
-          const { data: codeData } = await supabase.rpc('generate_ticket_code', {
-            prefix: eventTitle.substring(0, 4).toUpperCase().replace(/\s/g, ''),
-          });
-          const code = codeData || `TKT-${Date.now()}-${i}`;
-
-          const { error } = await supabase.from('reservations').insert({
-            code,
-            event_id: eventId,
-            ticket_type_id: tt.id,
-            user_id: user.id,
-            type: tt.type,
-            quantity: 1,
-            status: 'active',
-          });
-
-          if (error) throw error;
-          newCodes.push(code);
-        }
-      }
-
-      setCodes(newCodes);
-      setPurchased(true);
+      if (error) throw error;
+      setPurchased(true); 
+      setCodes([]); // we don't dispense code immediately 
       queryClient.invalidateQueries({ queryKey: ['events'] });
-      toast.success(`¡${newCodes.length} entrada(s) reservada(s)!`);
+      toast.success(`Solicitud enviada correctamente`);
     } catch (err: any) {
-      toast.error(err.message || 'Error al reservar');
+      toast.error(err.message || 'Error al solicitar');
     }
     setLoading(false);
   };
 
   if (purchased) {
     return (
+      <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-6 space-y-4 text-center">
+        <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-warning/20 text-warning mb-2">
+          <Info className="h-6 w-6" />
+        </div>
+        <h3 className="text-xl font-bold text-foreground">¡Solicitud en Proceso!</h3>
+        <p className="text-sm text-muted-foreground mt-1">Hemos recibido tu solicitud de pago.</p>
+        <div className="rounded-xl bg-secondary/50 p-4 border border-border">
+           <p className="text-sm text-foreground mb-1">Tu solicitud está pendiente de verificación por un administrador.</p>
+           <p className="text-xs text-muted-foreground">Una vez que validemos la transferencia, las entradas aparecerán automáticamente en tu panel de "Mis Tickets".</p>
+        </div>
+        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setQuantities({}); }} className="w-full text-sm font-semibold text-primary hover:text-primary-hover transition-colors mt-4">
+          Volver al Inicio
+        </button>
+      </motion.div>
+    );
+  }
+
+  if (showPayment && !purchased) {
+    return (
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-6 space-y-4">
-        <div className="text-center">
-          <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-success/20 text-success mb-3">
-            <ShoppingCart className="h-6 w-6" />
-          </div>
-          <h3 className="text-lg font-bold text-foreground">¡Reserva Confirmada!</h3>
-          <p className="text-sm text-muted-foreground mt-1">Presenta estos códigos en la entrada</p>
+        <h3 className="text-lg font-bold text-foreground text-center">Realiza el Pago</h3>
+        <p className="text-sm text-muted-foreground text-center">Escanea u obtén el Código QR a continuación para abonar *Bs. {total}*</p>
+        <div className="flex justify-center my-4 relative">
+           <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagoEstandar+Ticket" alt="QR de Pago" className="rounded-xl ring-2 ring-primary max-w-[200px]" />
         </div>
-        <div className="space-y-2">
-          {codes.map((code, i) => (
-            <div key={i} className="rounded-xl bg-secondary p-3 text-center font-mono text-sm text-primary">{code}</div>
-          ))}
-        </div>
-        <button onClick={() => { setPurchased(false); setQuantities({}); setCodes([]); }} className="w-full text-sm text-muted-foreground hover:text-foreground transition-colors">
-          Comprar más entradas
+        
+        <button 
+           onClick={async () => {
+             const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagoEstandar+Ticket";
+             try {
+               const response = await fetch(qrUrl);
+               const blob = await response.blob();
+               const blobUrl = URL.createObjectURL(blob);
+               const link = document.createElement('a');
+               link.href = blobUrl;
+               link.download = 'QR_Pago_Banco.png';
+               document.body.appendChild(link);
+               link.click();
+               document.body.removeChild(link);
+               URL.revokeObjectURL(blobUrl);
+               setQrDownloaded(true);
+             } catch (err) {
+               // Failsafe por si hay bloqueo CORS
+               const link = document.createElement('a');
+               link.href = qrUrl;
+               link.target = "_blank";
+               link.download = 'QR_Pago_Banco.png';
+               document.body.appendChild(link);
+               link.click();
+               document.body.removeChild(link);
+               setQrDownloaded(true);
+             }
+           }}
+           className="w-full rounded-xl bg-secondary py-3 text-sm font-semibold text-foreground transition-all hover:bg-secondary/80 flex justify-center items-center gap-2 border border-border"
+        >
+          <Download className="h-4 w-4" /> 1. Descargar QR
+        </button>
+
+        <button 
+           onClick={handleRequestPurchase}
+           disabled={loading || !qrDownloaded}
+           className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40"
+        >
+          {loading ? 'Enviando...' : '2. Verificar Pago'}
         </button>
       </motion.div>
     );
@@ -136,11 +186,11 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle }: Pro
           </div>
           {user ? (
             <button
-              onClick={handlePurchase}
+              onClick={() => setShowPayment(true)}
               disabled={loading}
               className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40"
             >
-              {loading ? 'Reservando...' : 'Reservar Entradas'}
+              {asRRPP ? 'Registrar Venta de Entradas' : 'Reservar Entradas'}
             </button>
           ) : (
             <Link

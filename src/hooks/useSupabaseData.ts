@@ -4,6 +4,9 @@ import type { Tables } from '@/integrations/supabase/types';
 
 export type EventWithTickets = Tables<'events'> & {
   ticket_types: Tables<'ticket_types'>[];
+  allow_rrpp_guests?: boolean;
+  general_tables_count?: number;
+  vip_tables_count?: number;
 };
 
 export function useEvents(organizationId?: string) {

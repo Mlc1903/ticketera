@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2 } from 'lucide-react';
+import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEvents, useReservations, useOrgMembers } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
@@ -8,7 +8,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-type Tab = 'overview' | 'checkin' | 'events' | 'rrpp';
+type Tab = 'overview' | 'checkin' | 'events' | 'rrpp' | 'sales' | 'approvals';
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -21,12 +21,13 @@ export default function AdminDashboard() {
 
   // Event form state
   const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '' });
+  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true });
   const [savingEvent, setSavingEvent] = useState(false);
 
   // RRPP assign state
   const [rrppEmail, setRrppEmail] = useState('');
   const [assigningRRPP, setAssigningRRPP] = useState(false);
+  const [rrppZone, setRrppZone] = useState('');
 
   // Ticket type form state
   const [showTicketForm, setShowTicketForm] = useState<string | null>(null);
@@ -42,6 +43,8 @@ export default function AdminDashboard() {
     { value: 'checkin', label: 'Check-in', icon: ScanLine },
     { value: 'events', label: 'Eventos', icon: Calendar },
     { value: 'rrpp', label: 'RRPP', icon: Users },
+    { value: 'sales', label: 'Ventas', icon: DollarSign },
+    { value: 'approvals', label: 'Aprobaciones', icon: CheckCircle },
   ];
 
   // Fetch RRPP assignments for this org MUST be unconditionally called before early returns
@@ -67,6 +70,33 @@ export default function AdminDashboard() {
     enabled: !!orgId,
   });
 
+  const { data: purchaseRequests } = useQuery({
+    queryKey: ['admin-purchase-requests', orgId],
+    queryFn: async () => {
+      if (!orgId) return [];
+      const { data, error } = await supabase
+        .from('purchase_requests' as any)
+        .select('*, events!inner(title, organization_id)')
+        .eq('events.organization_id', orgId)
+        .eq('status', 'pending')
+        .order('created_at', { ascending: false });
+      if (error) throw error;
+
+      const uids = [...new Set((data || []).flatMap((r: any) => [r.user_id, r.rrpp_id]).filter(Boolean))];
+      if (uids.length === 0) return data;
+
+      const { data: profiles } = await supabase.from('profiles').select('user_id, name, email').in('user_id', uids);
+      const pMap = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p]));
+      
+      return (data || []).map((r: any) => ({
+        ...r,
+        buyerProfile: r.user_id ? pMap[r.user_id] : null,
+        rrppProfile: r.rrpp_id ? pMap[r.rrpp_id] : null,
+      }));
+    },
+    enabled: !!orgId,
+  });
+
   if (!orgId && userRole !== 'super_admin') {
     return (
       <div className="text-center py-20 space-y-3">
@@ -85,18 +115,36 @@ export default function AdminDashboard() {
     if (!eventForm.title || !eventForm.date || !eventForm.time || !eventForm.location || !orgId) return;
     setSavingEvent(true);
     try {
-      const { error } = await supabase.from('events').insert({
+      const { data: newEvent, error } = await supabase.from('events').insert({
         title: eventForm.title,
         description: eventForm.description,
         date: eventForm.date,
         time: eventForm.time,
         location: eventForm.location,
         capacity: parseInt(eventForm.capacity) || 0,
+        general_tables_count: parseInt(eventForm.general_tables_count) || 0,
+        vip_tables_count: parseInt(eventForm.vip_tables_count) || 0,
         organization_id: orgId,
-      });
+        is_free_pass: eventForm.is_free_pass,
+        free_pass_until: eventForm.is_free_pass && eventForm.free_pass_until ? eventForm.free_pass_until : null,
+        allow_rrpp_guests: eventForm.allow_rrpp_guests,
+      }).select().single();
+      
       if (error) throw error;
+
+      if (eventForm.is_free_pass && newEvent) {
+        const { error: ticketError } = await supabase.from('ticket_types').insert({
+          event_id: newEvent.id,
+          name: 'Entrada Free Pass',
+          type: 'rrpp_free' as any,
+          price: 0,
+          quantity: newEvent.capacity > 0 ? newEvent.capacity : 500,
+        });
+        if (ticketError) console.error('Error creando entrada free pass:', ticketError);
+      }
+
       toast.success('Evento creado');
-      setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '' });
+      setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true });
       setShowEventForm(false);
       queryClient.invalidateQueries({ queryKey: ['events'] });
     } catch (err: any) {
@@ -165,15 +213,88 @@ export default function AdminDashboard() {
         user_id: profile.user_id,
         unique_code: code,
         organization_id: orgId,
+        zone_type: rrppZone || null,
       });
       if (error) throw error;
       toast.success('RRPP asignado a la discoteca');
       setRrppEmail('');
+      setRrppZone('');
       queryClient.invalidateQueries({ queryKey: ['admin-rrpp-assignments'] });
     } catch (err: any) {
       toast.error(err.message || 'Error al asignar RRPP');
     }
     setAssigningRRPP(false);
+  };
+
+  const handleDeleteEvent = async (id: string) => {
+    if (!confirm('¿Estás seguro de eliminar permanentemente este evento y todas sus reservas?')) return;
+    try {
+      const { error } = await supabase.from('events').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Evento eliminado');
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al eliminar');
+    }
+  };
+
+  const handleDeleteRRPP = async (id: string) => {
+    if (!confirm('¿Estás seguro de remover a este RRPP?')) return;
+    try {
+      const { error } = await supabase.from('rrpp_assignments').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('RRPP removido');
+      queryClient.invalidateQueries({ queryKey: ['admin-rrpp-assignments'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al remover');
+    }
+  };
+
+  const handleApproveRequest = async (req: any) => {
+    if (!confirm('¿Confirmas que recibiste el pago para aprobar esta compra?')) return;
+    try {
+      const { error: updErr } = await supabase.from('purchase_requests' as any).update({ status: 'approved' }).eq('id', req.id);
+      if (updErr) throw updErr;
+
+      const tts = req.ticket_types as any[];
+      for (const tt of tts) {
+        for (let i = 0; i < tt.quantity; i++) {
+          const { data: codeData } = await supabase.rpc('generate_ticket_code', { prefix: req.events.title.substring(0, 4).toUpperCase().replace(/\s/g, '') });
+          const code = codeData || `TKT-${req.id.split('-')[0]}-${i}`;
+
+          const { error: resErr } = await supabase.from('reservations').insert({
+            code,
+            event_id: req.event_id,
+            ticket_type_id: tt.ticket_type_id,
+            user_id: req.user_id,
+            rrpp_id: req.rrpp_id,
+            type: tt.type,
+            quantity: 1,
+            status: 'active'
+          });
+          if (resErr) console.error('Error insertando ticket', resErr);
+        }
+      }
+
+      toast.success('Pago aprobado y entradas generadas');
+      queryClient.invalidateQueries({ queryKey: ['admin-purchase-requests'] });
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+      queryClient.invalidateQueries({ queryKey: ['reservations'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al aprobar');
+    }
+  };
+
+  const handleRejectRequest = async (id: string) => {
+    if (!confirm('¿Estás seguro de RECHAZAR y eliminar esta solicitud de compra?')) return;
+    try {
+      const { error } = await supabase.from('purchase_requests' as any).delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Solicitud rechazada');
+      queryClient.invalidateQueries({ queryKey: ['admin-purchase-requests'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al rechazar');
+    }
   };
 
   return (
@@ -255,15 +376,33 @@ export default function AdminDashboard() {
               </div>
               <input placeholder="Ubicación" value={eventForm.location} onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
               <input type="number" placeholder="Aforo total" value={eventForm.capacity} onChange={(e) => setEventForm({ ...eventForm, capacity: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
-              <button onClick={handleCreateEvent} disabled={savingEvent || !eventForm.title || !eventForm.date || !eventForm.time || !eventForm.location} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40">
+              <div className="grid grid-cols-2 gap-3">
+                <input type="number" placeholder="Mesas General (Opcional)" value={eventForm.general_tables_count} onChange={(e) => setEventForm({ ...eventForm, general_tables_count: e.target.value })} className="rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
+                <input type="number" placeholder="Mesas VIP (Opcional)" value={eventForm.vip_tables_count} onChange={(e) => setEventForm({ ...eventForm, vip_tables_count: e.target.value })} className="rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
+              </div>
+              <div className="flex items-center gap-3 bg-secondary/50 p-3 rounded-xl ring-1 ring-border">
+                <input type="checkbox" id="allowRRPPGuests" checked={eventForm.allow_rrpp_guests} onChange={(e) => setEventForm({ ...eventForm, allow_rrpp_guests: e.target.checked })} className="w-4 h-4 rounded text-primary focus:ring-primary accent-primary" />
+                <label htmlFor="allowRRPPGuests" className="text-sm text-foreground flex-1 cursor-pointer">Permitir Listas de Invitados (VIP Gratis) para RRPP</label>
+              </div>
+              <div className="flex items-center gap-3 bg-secondary/50 p-3 rounded-xl ring-1 ring-border">
+                <input type="checkbox" id="freePassToggle" checked={eventForm.is_free_pass} onChange={(e) => setEventForm({ ...eventForm, is_free_pass: e.target.checked })} className="w-4 h-4 rounded text-primary focus:ring-primary accent-primary" />
+                <label htmlFor="freePassToggle" className="text-sm text-foreground flex-1 cursor-pointer">Activar Modo Free Pass (Límite de hora)</label>
+                {eventForm.is_free_pass && (
+                  <input type="time" title="Hora límite" value={eventForm.free_pass_until} onChange={(e) => setEventForm({ ...eventForm, free_pass_until: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" />
+                )}
+              </div>
+              <button onClick={handleCreateEvent} disabled={savingEvent || !eventForm.title || !eventForm.date || !eventForm.time || !eventForm.location || (eventForm.is_free_pass && !eventForm.free_pass_until)} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40">
                 {savingEvent ? 'Creando...' : 'Crear Evento'}
               </button>
             </div>
           )}
 
           {events?.map((ev) => (
-            <div key={ev.id} className="glass-card p-4 space-y-2">
-              <h3 className="font-semibold text-foreground">{ev.title}</h3>
+            <div key={ev.id} className="glass-card p-4 space-y-2 relative">
+              <button onClick={() => handleDeleteEvent(ev.id)} className="absolute top-4 right-4 text-muted-foreground hover:text-destructive transition-colors touch-target">
+                <Trash2 className="h-4 w-4" />
+              </button>
+              <h3 className="font-semibold text-foreground pr-8">{ev.title}</h3>
               <p className="text-sm text-muted-foreground">{ev.date} · {ev.time?.substring(0, 5)} · {ev.location}</p>
               <div className="flex flex-wrap gap-2 mt-2">
                 {ev.ticket_types?.map((tt) => (
@@ -302,6 +441,11 @@ export default function AdminDashboard() {
           <div className="glass-card p-4 space-y-3">
             <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><UserPlus className="h-4 w-4 text-primary" /> Asignar RRPP a la Discoteca</h3>
             <input type="email" placeholder="Email del RRPP" value={rrppEmail} onChange={(e) => setRrppEmail(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
+            <select value={rrppZone} onChange={(e) => setRrppZone(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border cursor-pointer">
+              <option value="">Todas las zonas (Por Defecto)</option>
+              <option value="general">Solo General</option>
+              <option value="vip">Solo VIP</option>
+            </select>
             <button onClick={handleAssignRRPP} disabled={assigningRRPP || !rrppEmail} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40">
               {assigningRRPP ? 'Asignando...' : 'Asignar RRPP'}
             </button>
@@ -313,14 +457,102 @@ export default function AdminDashboard() {
               <div key={a.id} className="flex items-center justify-between rounded-xl bg-secondary p-3">
                 <div>
                   <p className="text-sm font-medium text-foreground">{a.profile?.name || 'RRPP'}</p>
-                  <p className="text-xs text-muted-foreground">{a.profile?.email} · RRPP Oficial</p>
+                  <p className="text-xs text-muted-foreground">{a.profile?.email} · RRPP Oficial {a.zone_type ? `(${a.zone_type === 'vip' ? 'Solo VIP' : 'Solo General'})` : '(Todas las Zonas)'}</p>
                 </div>
-                <span className="rounded-lg bg-primary/15 px-2 py-1 text-xs font-mono text-primary">{a.unique_code}</span>
+                <div className="flex items-center gap-3">
+                  <span className="rounded-lg bg-primary/15 px-2 py-1 text-xs font-mono text-primary">{a.unique_code}</span>
+                  <button onClick={() => handleDeleteRRPP(a.id)} className="text-muted-foreground hover:text-destructive transition-colors touch-target">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
               </div>
             ))}
             {(!rrppAssignments || rrppAssignments.length === 0) && (
               <p className="text-sm text-muted-foreground text-center py-4">No hay RRPP asignados aún</p>
             )}
+          </div>
+        </div>
+      )}
+      {tab === 'sales' && (
+        <div className="space-y-4">
+          <div className="glass-card p-4 space-y-3">
+             <h3 className="text-sm font-semibold text-foreground">Registro General de Ventas (Reservas Activas / Usadas)</h3>
+             {reservations?.length === 0 ? (
+               <p className="text-sm text-muted-foreground text-center py-4">No hay ventas registradas.</p>
+             ) : (
+               <div className="space-y-2">
+                 {reservations?.map((r: any) => {
+                    const evt = events?.find(e => e.id === r.event_id);
+                    const isFreeLog = r.type === 'rrpp_free' || r.type === 'mesa_vip';
+                    const isRRPP = !!r.rrpp_id;
+                    const rrppName = isRRPP ? (rrppAssignments?.find(a => a.user_id === r.rrpp_id)?.profile?.name || 'RRPP') : null;
+                    return (
+                      <div key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl bg-secondary p-3 gap-2">
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{evt?.title || 'Evento'} <span className="text-muted-foreground font-normal">({r.type})</span></p>
+                          <p className="text-xs text-muted-foreground font-mono">{r.code} · {r.status}</p>
+                        </div>
+                        <div className="text-left sm:text-right flex flex-row sm:flex-col justify-between sm:justify-center items-center sm:items-end">
+                          <p className={`text-sm font-bold ${isFreeLog ? 'text-success' : 'text-primary'}`}>
+                            {isFreeLog ? 'Cortesía' : 'Venta'}
+                          </p>
+                          <p className="text-[10px] uppercase font-semibold text-muted-foreground">
+                            {isRRPP ? `RRPP: ${rrppName}` : `Cliente Directo Vía App`}
+                          </p>
+                        </div>
+                      </div>
+                    );
+                 })}
+               </div>
+             )}
+          </div>
+        </div>
+      )}
+
+      {tab === 'approvals' && (
+        <div className="space-y-4">
+          <div className="glass-card p-4 space-y-3">
+             <h3 className="text-sm font-semibold text-foreground">Solicitudes de Compra Pendientes</h3>
+             {purchaseRequests?.length === 0 ? (
+               <p className="text-sm text-muted-foreground text-center py-4">No hay pagos pendientes por verificar.</p>
+             ) : (
+               <div className="space-y-3">
+                 {purchaseRequests?.map((r: any) => {
+                    const isRRPP = !!r.rrpp_id;
+                    const profileName = isRRPP ? (r.rrppProfile?.name || 'RRPP') : (r.buyerProfile?.name || 'Cliente');
+                    const profileEmail = isRRPP ? (r.rrppProfile?.email || '') : (r.buyerProfile?.email || '');
+                    return (
+                      <div key={r.id} className="rounded-xl bg-secondary p-4 space-y-3 relative overflow-hidden">
+                        <div className="flex justify-between items-start">
+                           <div>
+                             <p className="font-semibold text-foreground text-base">Bs. {r.total_amount}</p>
+                             <p className="text-xs text-muted-foreground">Solicitado por: <span className="font-medium text-foreground">{profileName}</span></p>
+                             <p className="text-xs text-muted-foreground">Email: {profileEmail}</p>
+                             <p className="text-xs text-muted-foreground border-t border-border mt-1 pt-1">Evento: <span className="font-medium">{r.events.title}</span></p>
+                           </div>
+                           <span className="bg-warning/20 text-warning px-2 py-1 rounded text-[10px] font-bold uppercase tracking-wider">
+                             Pendiente
+                           </span>
+                        </div>
+                        <div className="bg-background/50 rounded-lg p-2 space-y-1 ring-1 ring-border">
+                           <p className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wider">Detalle del Pedido:</p>
+                           {r.ticket_types.map((tt: any, i: number) => (
+                             <p key={i} className="text-sm text-foreground">• {tt.quantity}x {tt.name} (Bs. {tt.price} c/u)</p>
+                           ))}
+                        </div>
+                        <div className="flex items-center gap-2 pt-1 border-t border-border mt-2">
+                          <button onClick={() => handleApproveRequest(r)} className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all active:scale-[0.98]">
+                            Aprobar Pago
+                          </button>
+                          <button onClick={() => handleRejectRequest(r.id)} className="flex-1 rounded-xl bg-destructive/10 text-destructive py-2.5 text-sm font-semibold hover:bg-destructive/20 transition-all active:scale-[0.98]">
+                            Rechazar
+                          </button>
+                        </div>
+                      </div>
+                    );
+                 })}
+               </div>
+             )}
           </div>
         </div>
       )}

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
 import { UserPlus, Share2, CheckCircle, Ticket, RotateCcw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -11,14 +11,21 @@ type GuestType = 'rrpp_free' | 'rrpp_paid' | 'mesa_vip';
 interface Props {
   eventId: string;
   eventTitle: string;
+  allowGuests?: boolean;
 }
 
-export default function PRGuestForm({ eventId, eventTitle }: Props) {
+export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }: Props) {
   const [name, setName] = useState('');
   const [guestType, setGuestType] = useState<GuestType>('rrpp_free');
   const [loading, setLoading] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
   const { user } = useAuth();
+
+  useEffect(() => {
+    if (!allowGuests && guestType === 'rrpp_free') {
+      setGuestType('mesa_vip');
+    }
+  }, [allowGuests, guestType]);
 
   const handleAddGuest = async () => {
     if (!name.trim() || !user) return;
@@ -60,7 +67,7 @@ export default function PRGuestForm({ eventId, eventTitle }: Props) {
   };
 
   const shareToWhatsApp = () => {
-    const typeLabel = guestType === 'rrpp_free' ? 'VIP Gratis' : guestType === 'rrpp_paid' ? 'Entrada' : 'Mesa VIP';
+    const typeLabel = guestType === 'rrpp_free' ? 'VIP Gratis' : 'Mesa VIP';
     const text = encodeURIComponent(
       `🎉 ¡Hola ${name}! Tienes un pase *${typeLabel}* para *${eventTitle}*\n🎟️ Código: *${generatedCode}*\n\nPresenta este código en la entrada. ¡Nos vemos!`
     );
@@ -69,9 +76,10 @@ export default function PRGuestForm({ eventId, eventTitle }: Props) {
 
   const reset = () => { setGeneratedCode(null); setName(''); };
 
-  const typeOptions: { value: GuestType; label: string; desc: string }[] = [
+  const typeOptions: { value: GuestType; label: string; desc: string }[] = allowGuests ? [
     { value: 'rrpp_free', label: 'VIP Gratis', desc: 'Invitación gratuita' },
-    { value: 'rrpp_paid', label: 'Vendida', desc: 'Entrada pagada' },
+    { value: 'mesa_vip', label: 'Mesa VIP', desc: 'Reserva de mesa' },
+  ] : [
     { value: 'mesa_vip', label: 'Mesa VIP', desc: 'Reserva de mesa' },
   ];
 
