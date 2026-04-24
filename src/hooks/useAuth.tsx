@@ -2,8 +2,7 @@ import { createContext, useContext, useEffect, useState, type ReactNode } from '
 import { supabase } from '@/integrations/supabase/client';
 import type { User, Session } from '@supabase/supabase-js';
 
-export type AppRole = 'admin' | 'rrpp' | 'user' | 'super_admin';
-
+export type AppRole = 'admin' | 'rrpp' | 'user' | 'super_admin' | 'guardia' | 'puerta';
 interface OrgInfo {
   id: string;
   name: string;

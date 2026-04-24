@@ -11,6 +11,8 @@ import AdminDashboard from "./pages/AdminDashboard";
 import SuperAdminDashboard from "./pages/SuperAdminDashboard";
 import MyTickets from "./pages/MyTickets";
 import Login from "./pages/Login";
+import GuardiaDashboard from "./pages/GuardiaDashboard";
+import PuertaDashboard from "./pages/PuertaDashboard";
 import NotFound from "./pages/NotFound";
 
 const queryClient = new QueryClient();
@@ -28,6 +30,8 @@ const App = () => (
               <Route path="/rrpp" element={<RRPPDashboard />} />
               <Route path="/admin" element={<AdminDashboard />} />
               <Route path="/super-admin" element={<SuperAdminDashboard />} />
+              <Route path="/guardia" element={<GuardiaDashboard />} />
+              <Route path="/puerta" element={<PuertaDashboard />} />
               <Route path="/mis-tickets" element={<MyTickets />} />
               <Route path="/login" element={<Login />} />
               <Route path="*" element={<NotFound />} />
