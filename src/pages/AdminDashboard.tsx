@@ -429,17 +429,29 @@ export default function AdminDashboard() {
                   <input type="time" title="Hora límite" value={eventForm.free_pass_until} onChange={(e) => setEventForm({ ...eventForm, free_pass_until: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" />
                 )}
               </div>
-              <button onClick={handleCreateEvent} disabled={savingEvent || !eventForm.title || !eventForm.date || !eventForm.time || !eventForm.location || (eventForm.is_free_pass && !eventForm.free_pass_until)} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40">
+              <button 
+                onClick={handleCreateEvent} 
+                disabled={savingEvent || !eventForm.title || !eventForm.date || !eventForm.time || !eventForm.location || (eventForm.is_free_pass && !eventForm.free_pass_until)} 
+                className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40"
+              >
                 {savingEvent ? (editEventId ? 'Actualizando...' : 'Creando...') : (editEventId ? 'Guardar Cambios' : 'Crear Evento')}
               </button>
               {editEventId && (
-                <button onClick={() => { setEditEventId(null); setShowEventForm(false); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true }); }} className="w-full py-2 text-xs text-muted-foreground hover:text-foreground">
+                <button 
+                  onClick={() => { 
+                    setEditEventId(null); 
+                    setShowEventForm(false); 
+                    setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true }); 
+                  }} 
+                  className="w-full py-2 text-xs text-muted-foreground hover:text-foreground"
+                >
                   Cancelar Edición
                 </button>
               )}
             </div>
           )}
 
+          {events?.map((ev) => (
             <div key={ev.id} className="glass-card p-4 space-y-2 relative">
               <div className="absolute top-4 right-4 flex items-center gap-2">
                 <button 
