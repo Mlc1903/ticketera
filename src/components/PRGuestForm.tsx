@@ -4,6 +4,8 @@ import { UserPlus, Share2, CheckCircle, Ticket, RotateCcw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
+import { useEvent } from '@/hooks/useSupabaseData';
+import InteractiveMapSelector from './InteractiveMapSelector';
 import { toast } from 'sonner';
 
 type GuestType = 'rrpp_free' | 'rrpp_paid' | 'mesa_vip';
@@ -19,7 +21,10 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
   const [guestType, setGuestType] = useState<GuestType>('rrpp_free');
   const [loading, setLoading] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
+  const [showMap, setShowMap] = useState(false);
+  const [selectedTable, setSelectedTable] = useState<{ id: string, zoneName: string, label: string } | null>(null);
   const { user } = useAuth();
+  const { data: eventData } = useEvent(eventId);
 
   useEffect(() => {
     if (!allowGuests && guestType === 'rrpp_free') {
@@ -55,6 +60,7 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
         type: guestType,
         quantity: 1,
         status: 'active',
+        zone_table_id: guestType === 'mesa_vip' && selectedTable ? selectedTable.id : null,
       });
 
       if (error) throw error;
@@ -115,9 +121,55 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
+
+          {guestType === 'mesa_vip' && eventData?.organization_id && (
+            <div className="p-4 rounded-xl border border-warning bg-warning/5 space-y-3">
+               <h4 className="font-semibold text-warning text-sm flex items-center gap-2">
+                 <UserPlus className="h-4 w-4" /> Selección de Mesa VIP
+               </h4>
+               {selectedTable ? (
+                 <div className="flex items-center justify-between bg-background p-3 rounded-xl border border-border">
+                   <div>
+                     <p className="text-sm font-semibold">{selectedTable.label}</p>
+                     <p className="text-xs text-muted-foreground">{selectedTable.zoneName}</p>
+                   </div>
+                   <button onClick={() => setShowMap(true)} className="text-xs text-primary font-medium hover:underline">
+                     Cambiar
+                   </button>
+                 </div>
+               ) : (
+                 <button onClick={() => setShowMap(true)} className="w-full rounded-xl bg-warning text-warning-foreground py-2 text-sm font-semibold transition-all hover:bg-warning/90">
+                   Elegir Mesa en Croquis
+                 </button>
+               )}
+
+               {showMap && (
+                 <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex justify-center pb-20 items-center overflow-y-auto w-full">
+                   <div className="w-full max-w-2xl bg-card rounded-2xl shadow-xl border border-border p-4 mx-4">
+                     <div className="flex justify-between items-center mb-4">
+                       <h3 className="font-bold">Croquis</h3>
+                       <button onClick={() => setShowMap(false)} className="text-muted-foreground hover:text-foreground text-sm font-semibold">Cerrar</button>
+                     </div>
+                     <InteractiveMapSelector 
+                       organizationId={eventData.organization_id} 
+                       eventId={eventId} 
+                       selectedTableId={selectedTable?.id || null} 
+                       onSelectTable={(id, zone, label) => id ? setSelectedTable({ id, zoneName: zone, label }) : setSelectedTable(null)} 
+                     />
+                     <div className="mt-4 flex justify-end">
+                       <button onClick={() => setShowMap(false)} disabled={!selectedTable} className="rounded-xl bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40 hover:shadow-glow">
+                         Confirmar Mesa
+                       </button>
+                     </div>
+                   </div>
+                 </div>
+               )}
+            </div>
+          )}
+
           <button
             onClick={handleAddGuest}
-            disabled={loading || !name.trim()}
+            disabled={loading || !name.trim() || (guestType === 'mesa_vip' && !selectedTable)}
             className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2"
           >
             <Ticket className="h-4 w-4" />

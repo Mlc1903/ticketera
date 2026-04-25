@@ -6,6 +6,9 @@ import { useAuth } from '@/hooks/useAuth';
 import { Link } from 'react-router-dom';
 import type { Tables } from '@/integrations/supabase/types';
 import { toast } from 'sonner';
+import { MapPin } from 'lucide-react';
+import { useEvent } from '@/hooks/useSupabaseData';
+import InteractiveMapSelector from './InteractiveMapSelector';
 import { useQueryClient } from '@tanstack/react-query';
 
 interface Props {
@@ -22,8 +25,12 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   const [purchased, setPurchased] = useState(false);
   const [codes, setCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
+  const [showMap, setShowMap] = useState(false);
+  const [selectedTable, setSelectedTable] = useState<{ id: string, zoneName: string, label: string } | null>(null);
+  
   const { user } = useAuth();
   const queryClient = useQueryClient();
+  const { data: eventData } = useEvent(eventId);
 
   const updateQty = (id: string, delta: number) => {
     setQuantities((prev) => {
@@ -60,7 +67,10 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
         event_id: eventId,
         user_id: user.id,
         rrpp_id: asRRPP ? user.id : null,
-        ticket_types: typesToRequest,
+        ticket_types: typesToRequest.map(tt => ({
+          ...tt,
+          zone_table_id: tt.type === 'mesa_vip' && selectedTable ? selectedTable.id : null
+        })),
         total_amount: total
       });
 
@@ -178,6 +188,52 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
         })}
       </div>
 
+      {/* Map selector for VIP Tables if selected */}
+      {ticketTypes.some(tt => tt.type === 'mesa_vip' && (quantities[tt.id] || 0) > 0) && eventData?.organization_id && (
+        <div className="mt-4 p-4 rounded-xl border border-warning bg-warning/5 space-y-3">
+           <h4 className="font-semibold text-warning text-sm flex items-center gap-2">
+             <MapPin className="h-4 w-4" /> Selección de Mesa VIP requerida
+           </h4>
+           {selectedTable ? (
+             <div className="flex items-center justify-between bg-background p-3 rounded-xl border border-border">
+               <div>
+                 <p className="text-sm font-semibold">{selectedTable.label}</p>
+                 <p className="text-xs text-muted-foreground">{selectedTable.zoneName}</p>
+               </div>
+               <button onClick={() => setShowMap(true)} className="text-xs text-primary font-medium hover:underline">
+                 Cambiar
+               </button>
+             </div>
+           ) : (
+             <button onClick={() => setShowMap(true)} className="w-full rounded-xl bg-warning text-warning-foreground py-2 text-sm font-semibold transition-all hover:bg-warning/90">
+               Elegir Mesa en Croquis
+             </button>
+           )}
+
+           {showMap && (
+             <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex justify-center pb-20 items-center overflow-y-auto w-full">
+               <div className="w-full max-w-2xl bg-card rounded-2xl shadow-xl border border-border p-4 mx-4">
+                 <div className="flex justify-between items-center mb-4">
+                   <h3 className="font-bold">Croquis</h3>
+                   <button onClick={() => setShowMap(false)} className="text-muted-foreground hover:text-foreground text-sm font-semibold">Cerrar</button>
+                 </div>
+                 <InteractiveMapSelector 
+                   organizationId={eventData.organization_id} 
+                   eventId={eventId} 
+                   selectedTableId={selectedTable?.id || null} 
+                   onSelectTable={(id, zone, label) => id ? setSelectedTable({ id, zoneName: zone, label }) : setSelectedTable(null)} 
+                 />
+                 <div className="mt-4 flex justify-end">
+                   <button onClick={() => setShowMap(false)} disabled={!selectedTable} className="rounded-xl bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40 hover:shadow-glow">
+                     Confirmar Mesa
+                   </button>
+                 </div>
+               </div>
+             </div>
+           )}
+        </div>
+      )}
+
       {totalQty > 0 && (
         <motion.div initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="space-y-3">
           <div className="flex items-center justify-between text-sm">
@@ -187,7 +243,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           {user ? (
             <button
               onClick={() => setShowPayment(true)}
-              disabled={loading}
+              disabled={loading || (ticketTypes.some(tt => tt.type === 'mesa_vip' && (quantities[tt.id] || 0) > 0) && !selectedTable)}
               className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40"
             >
               {asRRPP ? 'Registrar Venta de Entradas' : 'Reservar Entradas'}

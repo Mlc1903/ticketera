@@ -1,14 +1,15 @@
 import { useState } from 'react';
-import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle } from 'lucide-react';
+import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useEvents, useReservations, useOrgMembers } from '@/hooks/useSupabaseData';
+import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
 import CheckInScanner from '@/components/CheckInScanner';
+import MapEditor from '@/components/MapEditor';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 
-type Tab = 'overview' | 'checkin' | 'events' | 'rrpp' | 'sales' | 'approvals';
+type Tab = 'overview' | 'checkin' | 'events' | 'rrpp' | 'sales' | 'approvals' | 'zones';
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -17,6 +18,7 @@ export default function AdminDashboard() {
   const { data: events, isLoading: eventsLoading } = useEvents(orgId);
   const { data: reservations } = useReservations({});
   const { data: orgMembers } = useOrgMembers(orgId);
+  const { data: zones, isLoading: zonesLoading } = useZones(orgId);
   const queryClient = useQueryClient();
 
   // Event form state
@@ -24,6 +26,15 @@ export default function AdminDashboard() {
   const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [savingEvent, setSavingEvent] = useState(false);
+  const [editEventId, setEditEventId] = useState<string | null>(null);
+
+  // Zone form state
+  const [showZoneForm, setShowZoneForm] = useState(false);
+  const [zoneName, setZoneName] = useState('');
+  const [zoneImageFile, setZoneImageFile] = useState<File | null>(null);
+  const [savingZone, setSavingZone] = useState(false);
+  const [activeZoneEditorId, setActiveZoneEditorId] = useState<string | null>(null);
+  const [savingZoneLayout, setSavingZoneLayout] = useState(false);
 
   // RRPP assign state
   const [rrppEmail, setRrppEmail] = useState('');
@@ -43,6 +54,7 @@ export default function AdminDashboard() {
     { value: 'overview', label: 'Resumen', icon: BarChart3 },
     { value: 'checkin', label: 'Check-in', icon: ScanLine },
     { value: 'events', label: 'Eventos', icon: Calendar },
+    { value: 'zones', label: 'Croquis', icon: MapPin },
     { value: 'rrpp', label: 'RRPP', icon: Users },
     { value: 'sales', label: 'Ventas', icon: DollarSign },
   ];
@@ -107,39 +119,60 @@ export default function AdminDashboard() {
         uploadedImageUrl = publicUrlData.publicUrl;
       }
 
-      const { data: newEvent, error } = await supabase.from('events').insert({
-        title: eventForm.title,
-        description: eventForm.description,
-        date: eventForm.date,
-        time: eventForm.time,
-        location: eventForm.location,
-        capacity: parseInt(eventForm.capacity) || 0,
-        general_tables_count: parseInt(eventForm.general_tables_count) || 0,
-        vip_tables_count: parseInt(eventForm.vip_tables_count) || 0,
-        organization_id: orgId,
-        is_free_pass: eventForm.is_free_pass,
-        free_pass_until: eventForm.is_free_pass && eventForm.free_pass_until ? eventForm.free_pass_until : null,
-        allow_rrpp_guests: eventForm.allow_rrpp_guests,
-        image_url: uploadedImageUrl,
-      }).select().single();
-      
-      if (error) throw error;
+      if (editEventId) {
+        const { error } = await supabase.from('events').update({
+          title: eventForm.title,
+          description: eventForm.description,
+          date: eventForm.date,
+          time: eventForm.time,
+          location: eventForm.location,
+          capacity: parseInt(eventForm.capacity) || 0,
+          general_tables_count: parseInt(eventForm.general_tables_count) || 0,
+          vip_tables_count: parseInt(eventForm.vip_tables_count) || 0,
+          is_free_pass: eventForm.is_free_pass,
+          free_pass_until: eventForm.is_free_pass && eventForm.free_pass_until ? eventForm.free_pass_until : null,
+          allow_rrpp_guests: eventForm.allow_rrpp_guests,
+          ...(uploadedImageUrl ? { image_url: uploadedImageUrl } : {}),
+        }).eq('id', editEventId);
+        
+        if (error) throw error;
+        toast.success('Evento actualizado');
+      } else {
+        const { data: newEvent, error } = await supabase.from('events').insert({
+          title: eventForm.title,
+          description: eventForm.description,
+          date: eventForm.date,
+          time: eventForm.time,
+          location: eventForm.location,
+          capacity: parseInt(eventForm.capacity) || 0,
+          general_tables_count: parseInt(eventForm.general_tables_count) || 0,
+          vip_tables_count: parseInt(eventForm.vip_tables_count) || 0,
+          organization_id: orgId,
+          is_free_pass: eventForm.is_free_pass,
+          free_pass_until: eventForm.is_free_pass && eventForm.free_pass_until ? eventForm.free_pass_until : null,
+          allow_rrpp_guests: eventForm.allow_rrpp_guests,
+          image_url: uploadedImageUrl,
+        }).select().single();
+        
+        if (error) throw error;
 
-      if (eventForm.is_free_pass && newEvent) {
-        const { error: ticketError } = await supabase.from('ticket_types').insert({
-          event_id: newEvent.id,
-          name: 'Entrada Free Pass',
-          type: 'rrpp_free' as any,
-          price: 0,
-          quantity: newEvent.capacity > 0 ? newEvent.capacity : 500,
-        });
-        if (ticketError) console.error('Error creando entrada free pass:', ticketError);
+        if (eventForm.is_free_pass && newEvent) {
+          const { error: ticketError } = await supabase.from('ticket_types').insert({
+            event_id: newEvent.id,
+            name: 'Entrada Free Pass',
+            type: 'rrpp_free' as any,
+            price: 0,
+            quantity: newEvent.capacity > 0 ? newEvent.capacity : 500,
+          });
+          if (ticketError) console.error('Error creando entrada free pass:', ticketError);
+        }
+        toast.success('Evento creado');
       }
-
-      toast.success('Evento creado');
+      
       setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true });
       setImageFile(null);
       setShowEventForm(false);
+      setEditEventId(null);
       queryClient.invalidateQueries({ queryKey: ['events'] });
     } catch (err: any) {
       toast.error(err.message || 'Error al crear evento');
@@ -244,6 +277,54 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleCreateZone = async () => {
+    if (!zoneName || !zoneImageFile || !orgId) return;
+    setSavingZone(true);
+    try {
+      const fileExt = zoneImageFile.name.split('.').pop();
+      const fileName = `zone-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+      const filePath = `${orgId}/${fileName}`;
+      
+      const { error: uploadError } = await supabase.storage
+        .from('events')
+        .upload(filePath, zoneImageFile);
+        
+      if (uploadError) throw new Error('Error al subir imagen: ' + uploadError.message);
+      
+      const { data: publicUrlData } = supabase.storage.from('events').getPublicUrl(filePath);
+      
+      const { error } = await supabase.from('organization_zones').insert({
+        organization_id: orgId,
+        name: zoneName,
+        image_url: publicUrlData.publicUrl,
+        tables_data: [],
+      });
+      if (error) throw error;
+      
+      toast.success('Zona creada');
+      setZoneName('');
+      setZoneImageFile(null);
+      setShowZoneForm(false);
+      queryClient.invalidateQueries({ queryKey: ['organization_zones'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al crear zona');
+    }
+    setSavingZone(false);
+  };
+
+  const handleSaveZoneLayout = async (zoneId: string, tablesData: ZoneTable[]) => {
+    setSavingZoneLayout(true);
+    try {
+      const { error } = await supabase.from('organization_zones').update({ tables_data: tablesData }).eq('id', zoneId);
+      if (error) throw error;
+      toast.success('Layout guardado exitosamente');
+      queryClient.invalidateQueries({ queryKey: ['organization_zones'] });
+      setActiveZoneEditorId(null);
+    } catch(err: any) {
+      toast.error('Error guardando layout: ' + err.message);
+    }
+    setSavingZoneLayout(false);
+  };
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 max-w-4xl mx-auto">
@@ -315,7 +396,7 @@ export default function AdminDashboard() {
 
           {showEventForm && (
             <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-foreground">Nuevo Evento</h3>
+              <h3 className="text-sm font-semibold text-foreground">{editEventId ? 'Editar Evento' : 'Nuevo Evento'}</h3>
               <input placeholder="Nombre del evento" value={eventForm.title} onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
               <textarea placeholder="Descripción" value={eventForm.description} onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary min-h-[80px]" />
               <div className="flex flex-col gap-2">
@@ -349,17 +430,46 @@ export default function AdminDashboard() {
                 )}
               </div>
               <button onClick={handleCreateEvent} disabled={savingEvent || !eventForm.title || !eventForm.date || !eventForm.time || !eventForm.location || (eventForm.is_free_pass && !eventForm.free_pass_until)} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40">
-                {savingEvent ? 'Creando...' : 'Crear Evento'}
+                {savingEvent ? (editEventId ? 'Actualizando...' : 'Creando...') : (editEventId ? 'Guardar Cambios' : 'Crear Evento')}
               </button>
+              {editEventId && (
+                <button onClick={() => { setEditEventId(null); setShowEventForm(false); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true }); }} className="w-full py-2 text-xs text-muted-foreground hover:text-foreground">
+                  Cancelar Edición
+                </button>
+              )}
             </div>
           )}
 
-          {events?.map((ev) => (
             <div key={ev.id} className="glass-card p-4 space-y-2 relative">
-              <button onClick={() => handleDeleteEvent(ev.id)} className="absolute top-4 right-4 text-muted-foreground hover:text-destructive transition-colors touch-target">
-                <Trash2 className="h-4 w-4" />
-              </button>
-              <h3 className="font-semibold text-foreground pr-8">{ev.title}</h3>
+              <div className="absolute top-4 right-4 flex items-center gap-2">
+                <button 
+                  onClick={() => {
+                    setEditEventId(ev.id);
+                    setEventForm({
+                      title: ev.title || '',
+                      description: ev.description || '',
+                      date: ev.date || '',
+                      time: ev.time || '',
+                      location: ev.location || '',
+                      capacity: ev.capacity?.toString() || '',
+                      is_free_pass: ev.is_free_pass || false,
+                      free_pass_until: ev.free_pass_until || '',
+                      general_tables_count: ev.general_tables_count?.toString() || '',
+                      vip_tables_count: ev.vip_tables_count?.toString() || '',
+                      allow_rrpp_guests: ev.allow_rrpp_guests !== false
+                    });
+                    setShowEventForm(true);
+                    window.scrollTo({ top: 0, behavior: 'smooth' });
+                  }} 
+                  className="text-muted-foreground hover:text-primary transition-colors touch-target"
+                >
+                  <Edit className="h-4 w-4" />
+                </button>
+                <button onClick={() => handleDeleteEvent(ev.id)} className="text-muted-foreground hover:text-destructive transition-colors touch-target">
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+              <h3 className="font-semibold text-foreground pr-16">{ev.title}</h3>
               <p className="text-sm text-muted-foreground">{ev.date} · {ev.time?.substring(0, 5)} · {ev.location}</p>
               <div className="flex flex-wrap gap-2 mt-2">
                 {ev.ticket_types?.map((tt) => (
@@ -390,6 +500,86 @@ export default function AdminDashboard() {
               )}
             </div>
           ))}
+        </div>
+      )}
+
+      {tab === 'zones' && (
+        <div className="space-y-4">
+          <button onClick={() => setShowZoneForm(!showZoneForm)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98]">
+            <Plus className="h-4 w-4" /> Crear Zona / Croquis
+          </button>
+
+          {showZoneForm && (
+            <div className="glass-card p-4 space-y-3">
+              <h3 className="text-sm font-semibold text-foreground">Nueva Zona</h3>
+              <input placeholder="Nombre de la zona (Ej: VIP, Main Room)" value={zoneName} onChange={(e) => setZoneName(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
+              <div className="flex flex-col gap-2">
+                <label className="text-sm font-medium text-foreground px-1">Imagen del Croquis</label>
+                <input 
+                  type="file" 
+                  accept="image/*"
+                  onChange={(e) => setZoneImageFile(e.target.files?.[0] || null)}
+                  className="w-full rounded-xl bg-secondary px-4 py-2.5 text-sm text-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-foreground hover:file:bg-primary/90 outline-none ring-1 ring-border focus:ring-primary cursor-pointer"
+                />
+              </div>
+              <button 
+                onClick={handleCreateZone} 
+                disabled={savingZone || !zoneName || !zoneImageFile} 
+                className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40"
+              >
+                {savingZone ? 'Creando...' : 'Guardar Zona'}
+              </button>
+            </div>
+          )}
+
+          {zonesLoading ? (
+             <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
+          ) : (
+            zones?.map((zone) => (
+              <div key={zone.id} className="glass-card p-4 space-y-3">
+                <div className="flex justify-between items-center">
+                  <h3 className="font-semibold text-foreground text-lg">{zone.name}</h3>
+                  {activeZoneEditorId !== zone.id && (
+                    <button 
+                      onClick={() => setActiveZoneEditorId(zone.id)}
+                      className="text-sm font-medium text-primary hover:underline"
+                    >
+                      Editar Mesas ({zone.tables_data?.length || 0})
+                    </button>
+                  )}
+                </div>
+                
+                {activeZoneEditorId === zone.id ? (
+                  <div className="pt-2">
+                    <MapEditor 
+                      imageUrl={zone.image_url} 
+                      initialTables={zone.tables_data || []} 
+                      onSave={(tables) => handleSaveZoneLayout(zone.id, tables)}
+                      isSaving={savingZoneLayout}
+                    />
+                    <button 
+                      onClick={() => setActiveZoneEditorId(null)}
+                      className="mt-4 text-xs font-medium text-muted-foreground hover:text-foreground"
+                    >
+                      Cancelar Edición
+                    </button>
+                  </div>
+                ) : (
+                  <div className="w-full md:w-1/2 aspect-video bg-secondary rounded-lg border border-border overflow-hidden relative">
+                    <img src={zone.image_url} alt={zone.name} className="w-full h-full object-cover opacity-60" />
+                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
+                      <span className="bg-background/80 px-3 py-1 rounded truncate text-xs font-medium text-foreground backdrop-blur-sm shadow-sm border border-border">
+                        Vista previa
+                      </span>
+                    </div>
+                  </div>
+                )}
+              </div>
+            ))
+          )}
+          {(!zonesLoading && (!zones || zones.length === 0)) && (
+            <p className="text-sm text-muted-foreground text-center py-4">No hay zonas configuradas.</p>
+          )}
         </div>
       )}
 

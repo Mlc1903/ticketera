@@ -137,3 +137,36 @@ export function useOrgMembers(organizationId?: string) {
     enabled: !!organizationId,
   });
 }
+
+export interface ZoneTable {
+  id: string;
+  label: string;
+  x: number;
+  y: number;
+  radius: number;
+}
+
+export interface OrganizationZone {
+  id: string;
+  organization_id: string;
+  name: string;
+  image_url: string;
+  tables_data: ZoneTable[];
+}
+
+export function useZones(organizationId?: string) {
+  return useQuery({
+    queryKey: ['organization_zones', organizationId],
+    queryFn: async (): Promise<OrganizationZone[]> => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('organization_zones')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return (data as any) || [];
+    },
+    enabled: !!organizationId,
+  });
+}
