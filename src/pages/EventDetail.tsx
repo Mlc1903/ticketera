@@ -52,7 +52,9 @@ export default function EventDetail() {
       </div>
 
       <div className="space-y-3">
-        <h1 className="text-2xl md:text-3xl font-black text-foreground">{event.title}</h1>
+        <h1 className="text-2xl md:text-3xl font-black text-foreground">
+          {event.title} {event.organizations?.name ? `- ${event.organizations.name}` : ''}
+        </h1>
         <div className="flex flex-wrap gap-4 text-sm text-muted-foreground">
           <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4 text-primary" />{formattedDate}</span>
           <span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-primary" />{event.time?.substring(0, 5)} hrs</span>

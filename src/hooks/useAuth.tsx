@@ -73,12 +73,32 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   }, []);
 
   const fetchUserRole = async (userId: string) => {
-    const { data } = await supabase
+    const { data, error } = await supabase
       .from('user_roles')
       .select('role')
-      .eq('user_id', userId)
-      .maybeSingle();
-    setUserRole((data?.role as AppRole) ?? 'user');
+      .eq('user_id', userId);
+    
+    if (error || !data || data.length === 0) {
+      setUserRole('user');
+      return;
+    }
+
+    const roles = data.map(r => r.role as AppRole);
+    
+    // Jerarquía de roles
+    if (roles.includes('super_admin')) {
+      setUserRole('super_admin');
+    } else if (roles.includes('admin')) {
+      setUserRole('admin');
+    } else if (roles.includes('rrpp')) {
+      setUserRole('rrpp');
+    } else if (roles.includes('guardia')) {
+      setUserRole('guardia');
+    } else if (roles.includes('puerta')) {
+      setUserRole('puerta');
+    } else {
+      setUserRole('user');
+    }
   };
 
   const fetchUserOrgs = async (userId: string) => {

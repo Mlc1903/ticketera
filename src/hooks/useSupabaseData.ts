@@ -4,6 +4,7 @@ import type { Tables } from '@/integrations/supabase/types';
 
 export type EventWithTickets = Tables<'events'> & {
   ticket_types: Tables<'ticket_types'>[];
+  organizations?: { name: string };
   allow_rrpp_guests?: boolean;
   general_tables_count?: number;
   vip_tables_count?: number;
@@ -15,7 +16,7 @@ export function useEvents(organizationId?: string) {
     queryFn: async (): Promise<EventWithTickets[]> => {
       let query = supabase
         .from('events')
-        .select('*, ticket_types(*)')
+        .select('*, ticket_types(*), organizations(name)')
         .order('date', { ascending: true });
       if (organizationId) {
         query = query.eq('organization_id', organizationId);
@@ -34,7 +35,7 @@ export function useEvent(id: string | undefined) {
       if (!id) return null;
       const { data, error } = await supabase
         .from('events')
-        .select('*, ticket_types(*)')
+        .select('*, ticket_types(*), organizations(name)')
         .eq('id', id)
         .maybeSingle();
       if (error) throw error;
@@ -95,7 +96,7 @@ export function useRRPPEvents(userId?: string) {
       // 2. Get all events for those organizations
       const { data: events, error: eventsError } = await supabase
         .from('events')
-        .select('*, ticket_types(*)')
+        .select('*, ticket_types(*), organizations(name)')
         .in('organization_id', orgIds)
         .order('date', { ascending: true });
       
@@ -144,6 +145,8 @@ export interface ZoneTable {
   x: number;
   y: number;
   radius: number;
+  price?: number;
+  tickets_included?: number;
 }
 
 export interface OrganizationZone {

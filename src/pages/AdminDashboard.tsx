@@ -8,12 +8,13 @@ import MapEditor from '@/components/MapEditor';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
+import EventMapStatus from '@/components/EventMapStatus';
 
 type Tab = 'overview' | 'checkin' | 'events' | 'rrpp' | 'sales' | 'approvals' | 'zones';
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
-  const { activeOrg, userRole } = useAuth();
+  const { activeOrg, userRole, user } = useAuth();
   const orgId = activeOrg?.id;
   const { data: events, isLoading: eventsLoading } = useEvents(orgId);
   const { data: reservations } = useReservations({});
@@ -40,6 +41,10 @@ export default function AdminDashboard() {
   const [rrppEmail, setRrppEmail] = useState('');
   const [assigningRRPP, setAssigningRRPP] = useState(false);
   const [rrppZone, setRrppZone] = useState('');
+  const [isTeamLeader, setIsTeamLeader] = useState(false);
+  const [zoneVisibility, setZoneVisibility] = useState('all');
+  const [statusEventId, setStatusEventId] = useState<string | null>(null);
+  const [statusMode, setStatusMode] = useState<'config' | 'status'>('config');
 
   // Ticket type form state
   const [showTicketForm, setShowTicketForm] = useState<string | null>(null);
@@ -59,7 +64,7 @@ export default function AdminDashboard() {
     { value: 'sales', label: 'Ventas', icon: DollarSign },
   ];
 
-  // Fetch RRPP assignments for this org MUST be unconditionally called before early returns
+  // Fetch RRPP assignments
   const { data: rrppAssignments } = useQuery({
     queryKey: ['admin-rrpp-assignments', orgId],
     queryFn: async () => {
@@ -69,19 +74,23 @@ export default function AdminDashboard() {
         .select('*, events:event_id(title)')
         .eq('organization_id', orgId);
       if (error) throw error;
-      // Get profiles for each assignment
-      const userIds = [...new Set((data || []).map((a: any) => a.user_id))];
-      if (userIds.length === 0) return [];
+      const rids = (data || []).map((a: any) => a.user_id);
+      const cids = (data || []).map((a: any) => a.created_by).filter(Boolean);
+      const uids = [...new Set([...rids, ...cids])];
+      if (uids.length === 0) return [];
       const { data: profiles } = await supabase
         .from('profiles')
         .select('user_id, name, email')
-        .in('user_id', userIds);
+        .in('user_id', uids);
       const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p]));
-      return (data || []).map((a: any) => ({ ...a, profile: profileMap[a.user_id] }));
+      return (data || []).map((a: any) => ({ 
+        ...a, 
+        profile: profileMap[a.user_id],
+        creatorProfile: a.created_by ? profileMap[a.created_by] : null
+      }));
     },
     enabled: !!orgId,
   });
-
 
   if (!orgId && userRole !== 'super_admin') {
     return (
@@ -97,7 +106,7 @@ export default function AdminDashboard() {
     return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
   }
 
-  const handleCreateEvent = async () => {
+  const handleSaveEvent = async () => {
     if (!eventForm.title || !eventForm.date || !eventForm.time || !eventForm.location || !orgId) return;
     setSavingEvent(true);
     try {
@@ -106,15 +115,8 @@ export default function AdminDashboard() {
         const fileExt = imageFile.name.split('.').pop();
         const fileName = `${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
         const filePath = `${orgId}/${fileName}`;
-        
-        const { error: uploadError } = await supabase.storage
-          .from('events')
-          .upload(filePath, imageFile);
-          
-        if (uploadError) {
-          throw new Error('Error al subir la imagen: ' + uploadError.message);
-        }
-        
+        const { error: uploadError } = await supabase.storage.from('events').upload(filePath, imageFile);
+        if (uploadError) throw new Error('Error al subir la imagen: ' + uploadError.message);
         const { data: publicUrlData } = supabase.storage.from('events').getPublicUrl(filePath);
         uploadedImageUrl = publicUrlData.publicUrl;
       }
@@ -134,7 +136,6 @@ export default function AdminDashboard() {
           allow_rrpp_guests: eventForm.allow_rrpp_guests,
           ...(uploadedImageUrl ? { image_url: uploadedImageUrl } : {}),
         }).eq('id', editEventId);
-        
         if (error) throw error;
         toast.success('Evento actualizado');
       } else {
@@ -153,29 +154,25 @@ export default function AdminDashboard() {
           allow_rrpp_guests: eventForm.allow_rrpp_guests,
           image_url: uploadedImageUrl,
         }).select().single();
-        
         if (error) throw error;
-
         if (eventForm.is_free_pass && newEvent) {
-          const { error: ticketError } = await supabase.from('ticket_types').insert({
+          await supabase.from('ticket_types').insert({
             event_id: newEvent.id,
             name: 'Entrada Free Pass',
             type: 'rrpp_free' as any,
             price: 0,
             quantity: newEvent.capacity > 0 ? newEvent.capacity : 500,
           });
-          if (ticketError) console.error('Error creando entrada free pass:', ticketError);
         }
         toast.success('Evento creado');
       }
-      
       setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true });
       setImageFile(null);
       setShowEventForm(false);
       setEditEventId(null);
       queryClient.invalidateQueries({ queryKey: ['events'] });
     } catch (err: any) {
-      toast.error(err.message || 'Error al crear evento');
+      toast.error(err.message || 'Error');
     }
     setSavingEvent(false);
   };
@@ -206,74 +203,52 @@ export default function AdminDashboard() {
     if (!rrppEmail || !orgId) return;
     setAssigningRRPP(true);
     try {
-      // Find user by email in profiles
-      const { data: profile } = await supabase
-        .from('profiles')
-        .select('user_id')
-        .eq('email', rrppEmail.trim())
-        .maybeSingle();
-      
+      const { data: profile } = await supabase.from('profiles').select('user_id').eq('email', rrppEmail.trim()).maybeSingle();
       if (!profile) {
-        toast.error('Usuario no encontrado con ese email');
+        toast.error('Usuario no encontrado');
         setAssigningRRPP(false);
         return;
       }
-
-      // Ensure they have rrpp role
-      const { data: existingRole } = await supabase
-        .from('user_roles')
-        .select('id')
-        .eq('user_id', profile.user_id)
-        .eq('role', 'rrpp')
-        .maybeSingle();
-
+      const { data: existingRole } = await supabase.from('user_roles').select('id').eq('user_id', profile.user_id).eq('role', 'rrpp').maybeSingle();
       if (!existingRole) {
         await supabase.from('user_roles').insert({ user_id: profile.user_id, role: 'rrpp' as any });
       }
-
-      // Generate unique code
       const { data: codeData } = await supabase.rpc('generate_ticket_code', { prefix: 'RRPP' });
       const code = codeData || `RRPP-${Date.now()}`;
-
-      // Create assignment
       const { error } = await supabase.from('rrpp_assignments').insert({
         user_id: profile.user_id,
         unique_code: code,
         organization_id: orgId,
         zone_type: rrppZone || null,
+        is_team_leader: isTeamLeader,
+        created_by: user?.id,
       });
       if (error) throw error;
-      toast.success('RRPP asignado a la discoteca');
+      toast.success('RRPP asignado');
       setRrppEmail('');
-      setRrppZone('');
+      setIsTeamLeader(false);
       queryClient.invalidateQueries({ queryKey: ['admin-rrpp-assignments'] });
     } catch (err: any) {
-      toast.error(err.message || 'Error al asignar RRPP');
+      toast.error(err.message || 'Error');
     }
     setAssigningRRPP(false);
   };
 
   const handleDeleteEvent = async (id: string) => {
-    if (!confirm('¿Estás seguro de eliminar permanentemente este evento y todas sus reservas?')) return;
-    try {
-      const { error } = await supabase.from('events').delete().eq('id', id);
-      if (error) throw error;
+    if (!confirm('¿Eliminar evento?')) return;
+    const { error } = await supabase.from('events').delete().eq('id', id);
+    if (!error) {
       toast.success('Evento eliminado');
       queryClient.invalidateQueries({ queryKey: ['events'] });
-    } catch (err: any) {
-      toast.error(err.message || 'Error al eliminar');
     }
   };
 
   const handleDeleteRRPP = async (id: string) => {
-    if (!confirm('¿Estás seguro de remover a este RRPP?')) return;
-    try {
-      const { error } = await supabase.from('rrpp_assignments').delete().eq('id', id);
-      if (error) throw error;
+    if (!confirm('¿Remover RRPP?')) return;
+    const { error } = await supabase.from('rrpp_assignments').delete().eq('id', id);
+    if (!error) {
       toast.success('RRPP removido');
       queryClient.invalidateQueries({ queryKey: ['admin-rrpp-assignments'] });
-    } catch (err: any) {
-      toast.error(err.message || 'Error al remover');
     }
   };
 
@@ -281,47 +256,37 @@ export default function AdminDashboard() {
     if (!zoneName || !zoneImageFile || !orgId) return;
     setSavingZone(true);
     try {
-      const fileExt = zoneImageFile.name.split('.').pop();
-      const fileName = `zone-${Math.random().toString(36).substring(2, 15)}.${fileExt}`;
+      const fileName = `zone-${Math.random().toString(36).substring(2, 15)}`;
       const filePath = `${orgId}/${fileName}`;
-      
-      const { error: uploadError } = await supabase.storage
-        .from('events')
-        .upload(filePath, zoneImageFile);
-        
-      if (uploadError) throw new Error('Error al subir imagen: ' + uploadError.message);
-      
+      const { error: uploadError } = await supabase.storage.from('events').upload(filePath, zoneImageFile);
+      if (uploadError) throw uploadError;
       const { data: publicUrlData } = supabase.storage.from('events').getPublicUrl(filePath);
-      
       const { error } = await supabase.from('organization_zones').insert({
         organization_id: orgId,
         name: zoneName,
         image_url: publicUrlData.publicUrl,
+        visibility: zoneVisibility,
         tables_data: [],
       });
       if (error) throw error;
-      
       toast.success('Zona creada');
       setZoneName('');
       setZoneImageFile(null);
       setShowZoneForm(false);
       queryClient.invalidateQueries({ queryKey: ['organization_zones'] });
     } catch (err: any) {
-      toast.error(err.message || 'Error al crear zona');
+      toast.error('Error al crear zona');
     }
     setSavingZone(false);
   };
 
   const handleSaveZoneLayout = async (zoneId: string, tablesData: ZoneTable[]) => {
     setSavingZoneLayout(true);
-    try {
-      const { error } = await supabase.from('organization_zones').update({ tables_data: tablesData }).eq('id', zoneId);
-      if (error) throw error;
-      toast.success('Layout guardado exitosamente');
+    const { error } = await supabase.from('organization_zones').update({ tables_data: tablesData }).eq('id', zoneId);
+    if (!error) {
+      toast.success('Layout guardado');
       queryClient.invalidateQueries({ queryKey: ['organization_zones'] });
       setActiveZoneEditorId(null);
-    } catch(err: any) {
-      toast.error('Error guardando layout: ' + err.message);
     }
     setSavingZoneLayout(false);
   };
@@ -357,7 +322,6 @@ export default function AdminDashboard() {
               </div>
             ))}
           </div>
-
           <div className="glass-card p-4 space-y-3">
             <h3 className="text-sm font-semibold text-foreground">Eventos Activos</h3>
             {events?.map((ev) => {
@@ -370,18 +334,11 @@ export default function AdminDashboard() {
                     <span className="text-xs text-muted-foreground">{pct}%</span>
                   </div>
                   <div className="h-1.5 rounded-full bg-muted overflow-hidden">
-                    <div className={`h-full rounded-full transition-all ${pct > 80 ? 'bg-destructive' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
-                  </div>
-                  <div className="flex justify-between text-xs text-muted-foreground">
-                    <span>{sold} vendidos</span>
-                    <span>{ev.capacity - sold} disponibles</span>
+                    <div className={`h-full rounded-full ${pct > 80 ? 'bg-destructive' : 'bg-primary'}`} style={{ width: `${pct}%` }} />
                   </div>
                 </div>
               );
             })}
-            {(!events || events.length === 0) && (
-              <p className="text-sm text-muted-foreground text-center py-4">No hay eventos. Crea uno en la pestaña Eventos.</p>
-            )}
           </div>
         </div>
       )}
@@ -390,207 +347,161 @@ export default function AdminDashboard() {
 
       {tab === 'events' && (
         <div className="space-y-4">
-          <button onClick={() => setShowEventForm(!showEventForm)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98]">
-            <Plus className="h-4 w-4" /> Crear Evento
+          <button onClick={() => { setEditEventId(null); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true }); setShowEventForm(!showEventForm); }} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all">
+            <Plus className="h-4 w-4" /> {showEventForm ? 'Cerrar Formulario' : 'Crear Evento'}
           </button>
 
           {showEventForm && (
-            <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-foreground">{editEventId ? 'Editar Evento' : 'Nuevo Evento'}</h3>
-              <input placeholder="Nombre del evento" value={eventForm.title} onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
-              <textarea placeholder="Descripción" value={eventForm.description} onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary min-h-[80px]" />
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground px-1">Imagen del evento (Opcional - se usará una por defecto si está vacío)</label>
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={(e) => setImageFile(e.target.files?.[0] || null)}
-                  className="w-full rounded-xl bg-secondary px-4 py-2.5 text-sm text-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-foreground hover:file:bg-primary/90 outline-none ring-1 ring-border focus:ring-primary cursor-pointer"
+            <div className="glass-card p-5 space-y-4 border-2 border-primary/20 animate-in fade-in zoom-in-95 duration-200">
+              <h3 className="font-bold text-lg text-foreground">{editEventId ? 'Editar Evento' : 'Nuevo Evento'}</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Título</label>
+                  <input placeholder="Título del evento" value={eventForm.title} onChange={(e) => setEventForm({ ...eventForm, title: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border focus:ring-primary outline-none transition-all" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Ubicación</label>
+                  <input placeholder="Ubicación" value={eventForm.location} onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border focus:ring-primary outline-none transition-all" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Fecha</label>
+                  <input type="date" value={eventForm.date} onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border focus:ring-primary outline-none transition-all" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Hora</label>
+                  <input type="time" value={eventForm.time} onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border focus:ring-primary outline-none transition-all" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Capacidad Total</label>
+                  <input placeholder="Capacidad" type="number" value={eventForm.capacity} onChange={(e) => setEventForm({ ...eventForm, capacity: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border focus:ring-primary outline-none transition-all" />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Imagen (Flyer)</label>
+                  <input type="file" accept="image/*" onChange={(e) => setImageFile(e.target.files?.[0] || null)} className="w-full text-xs text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-full file:border-0 file:text-xs file:font-semibold file:bg-primary/10 file:text-primary hover:file:bg-primary/20 cursor-pointer" />
+                </div>
+              </div>
+
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Descripción del Evento</label>
+                <textarea 
+                  placeholder="Escribe aquí los detalles del evento..." 
+                  value={eventForm.description} 
+                  onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} 
+                  className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border focus:ring-primary outline-none transition-all min-h-[100px] resize-none"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <input type="date" value={eventForm.date} onChange={(e) => setEventForm({ ...eventForm, date: e.target.value })} className="rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" />
-                <input type="time" value={eventForm.time} onChange={(e) => setEventForm({ ...eventForm, time: e.target.value })} className="rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" />
-              </div>
-              <input placeholder="Ubicación" value={eventForm.location} onChange={(e) => setEventForm({ ...eventForm, location: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
-              <input type="number" placeholder="Aforo total" value={eventForm.capacity} onChange={(e) => setEventForm({ ...eventForm, capacity: e.target.value })} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
-              <div className="grid grid-cols-2 gap-3">
-                <input type="number" placeholder="Mesas General (Opcional)" value={eventForm.general_tables_count} onChange={(e) => setEventForm({ ...eventForm, general_tables_count: e.target.value })} className="rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
-                <input type="number" placeholder="Mesas VIP (Opcional)" value={eventForm.vip_tables_count} onChange={(e) => setEventForm({ ...eventForm, vip_tables_count: e.target.value })} className="rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
-              </div>
-              <div className="flex items-center gap-3 bg-secondary/50 p-3 rounded-xl ring-1 ring-border">
-                <input type="checkbox" id="allowRRPPGuests" checked={eventForm.allow_rrpp_guests} onChange={(e) => setEventForm({ ...eventForm, allow_rrpp_guests: e.target.checked })} className="w-4 h-4 rounded text-primary focus:ring-primary accent-primary" />
-                <label htmlFor="allowRRPPGuests" className="text-sm text-foreground flex-1 cursor-pointer">Permitir Listas de Invitados (VIP Gratis) para RRPP</label>
-              </div>
-              <div className="flex items-center gap-3 bg-secondary/50 p-3 rounded-xl ring-1 ring-border">
-                <input type="checkbox" id="freePassToggle" checked={eventForm.is_free_pass} onChange={(e) => setEventForm({ ...eventForm, is_free_pass: e.target.checked })} className="w-4 h-4 rounded text-primary focus:ring-primary accent-primary" />
-                <label htmlFor="freePassToggle" className="text-sm text-foreground flex-1 cursor-pointer">Activar Modo Free Pass (Límite de hora)</label>
+
+              <div className="flex flex-wrap gap-4 p-4 bg-secondary/30 rounded-xl border border-border/50">
+                <label className="flex items-center gap-3 cursor-pointer group">
+                  <input type="checkbox" checked={eventForm.is_free_pass} onChange={(e) => setEventForm({ ...eventForm, is_free_pass: e.target.checked })} className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary bg-secondary" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Modo Free Pass</span>
+                    <span className="text-[10px] text-muted-foreground">Activa entradas gratuitas por lista</span>
+                  </div>
+                </label>
+
                 {eventForm.is_free_pass && (
-                  <input type="time" title="Hora límite" value={eventForm.free_pass_until} onChange={(e) => setEventForm({ ...eventForm, free_pass_until: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" />
+                  <div className="flex items-center gap-2 animate-in slide-in-from-left-2 duration-300">
+                    <span className="text-[10px] text-primary font-black uppercase">Válido hasta:</span>
+                    <input type="time" value={eventForm.free_pass_until} onChange={(e) => setEventForm({ ...eventForm, free_pass_until: e.target.value })} className="rounded-lg bg-background px-3 py-1.5 text-xs border border-primary/30 outline-none focus:ring-2 focus:ring-primary/20 text-foreground" />
+                  </div>
                 )}
+
+                <label className="flex items-center gap-3 cursor-pointer group ml-auto">
+                  <input type="checkbox" checked={eventForm.allow_rrpp_guests} onChange={(e) => setEventForm({ ...eventForm, allow_rrpp_guests: e.target.checked })} className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary bg-secondary" />
+                  <div className="flex flex-col">
+                    <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Lista RRPP</span>
+                    <span className="text-[10px] text-muted-foreground">Permitir que RRPPs anoten invitados</span>
+                  </div>
+                </label>
               </div>
-              <button 
-                onClick={handleCreateEvent} 
-                disabled={savingEvent || !eventForm.title || !eventForm.date || !eventForm.time || !eventForm.location || (eventForm.is_free_pass && !eventForm.free_pass_until)} 
-                className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40"
-              >
-                {savingEvent ? (editEventId ? 'Actualizando...' : 'Creando...') : (editEventId ? 'Guardar Cambios' : 'Crear Evento')}
-              </button>
-              {editEventId && (
-                <button 
-                  onClick={() => { 
-                    setEditEventId(null); 
-                    setShowEventForm(false); 
-                    setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true }); 
-                  }} 
-                  className="w-full py-2 text-xs text-muted-foreground hover:text-foreground"
-                >
-                  Cancelar Edición
+
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowEventForm(false)} className="flex-1 rounded-xl bg-secondary py-3.5 text-sm font-bold text-foreground hover:bg-secondary/80 transition-all active:scale-[0.98]">Cancelar</button>
+                <button onClick={handleSaveEvent} disabled={savingEvent} className="flex-[2] rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground hover:shadow-glow transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2">
+                  {savingEvent ? <Loader2 className="h-4 w-4 animate-spin" /> : null}
+                  {savingEvent ? 'Guardando...' : editEventId ? 'Actualizar Evento' : 'Publicar Evento'}
                 </button>
-              )}
+              </div>
             </div>
           )}
 
-          {events?.map((ev) => (
-            <div key={ev.id} className="glass-card p-4 space-y-2 relative">
-              <div className="absolute top-4 right-4 flex items-center gap-2">
-                <button 
-                  onClick={() => {
-                    setEditEventId(ev.id);
-                    setEventForm({
-                      title: ev.title || '',
-                      description: ev.description || '',
-                      date: ev.date || '',
-                      time: ev.time || '',
-                      location: ev.location || '',
-                      capacity: ev.capacity?.toString() || '',
-                      is_free_pass: ev.is_free_pass || false,
-                      free_pass_until: ev.free_pass_until || '',
-                      general_tables_count: ev.general_tables_count?.toString() || '',
-                      vip_tables_count: ev.vip_tables_count?.toString() || '',
-                      allow_rrpp_guests: ev.allow_rrpp_guests !== false
-                    });
-                    setShowEventForm(true);
-                    window.scrollTo({ top: 0, behavior: 'smooth' });
-                  }} 
-                  className="text-muted-foreground hover:text-primary transition-colors touch-target"
-                >
-                  <Edit className="h-4 w-4" />
-                </button>
-                <button onClick={() => handleDeleteEvent(ev.id)} className="text-muted-foreground hover:text-destructive transition-colors touch-target">
-                  <Trash2 className="h-4 w-4" />
-                </button>
-              </div>
-              <h3 className="font-semibold text-foreground pr-16">{ev.title}</h3>
-              <p className="text-sm text-muted-foreground">{ev.date} · {ev.time?.substring(0, 5)} · {ev.location}</p>
-              <div className="flex flex-wrap gap-2 mt-2">
-                {ev.ticket_types?.map((tt) => (
-                  <span key={tt.id} className="rounded-lg bg-secondary px-2.5 py-1 text-xs text-muted-foreground">
-                    {tt.name}: {tt.sold}/{tt.quantity} · Bs.{tt.price}
-                  </span>
-                ))}
-              </div>
-              <button onClick={() => setShowTicketForm(showTicketForm === ev.id ? null : ev.id)} className="text-xs text-primary font-medium hover:underline mt-1">
-                + Agregar tipo de ticket
-              </button>
-              {showTicketForm === ev.id && (
-                <div className="rounded-xl bg-secondary/50 p-3 space-y-2 mt-2">
-                  <input placeholder="Nombre (ej: General, VIP)" value={ticketForm.name} onChange={(e) => setTicketForm({ ...ticketForm, name: e.target.value })} className="w-full rounded-lg bg-secondary px-3 py-2 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" />
-                  <select value={ticketForm.type} onChange={(e) => setTicketForm({ ...ticketForm, type: e.target.value })} className="w-full rounded-lg bg-secondary px-3 py-2 text-sm text-foreground ring-1 ring-border">
-                    <option value="normal">Normal</option>
-                    <option value="vip">VIP</option>
-                    <option value="mesa_vip">Mesa VIP</option>
-                  </select>
-                  <div className="grid grid-cols-2 gap-2">
-                    <input type="number" placeholder="Precio (Bs)" value={ticketForm.price} onChange={(e) => setTicketForm({ ...ticketForm, price: e.target.value })} className="rounded-lg bg-secondary px-3 py-2 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" />
-                    <input type="number" placeholder="Cantidad" value={ticketForm.quantity} onChange={(e) => setTicketForm({ ...ticketForm, quantity: e.target.value })} className="rounded-lg bg-secondary px-3 py-2 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" />
-                  </div>
-                  <button onClick={handleAddTicketType} disabled={savingTicket || !ticketForm.name} className="w-full rounded-lg bg-primary py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40">
-                    {savingTicket ? 'Guardando...' : 'Agregar'}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {events?.map((ev) => (
+              <div key={ev.id} className="glass-card p-4 space-y-3 relative group border-border/50 hover:border-primary/30 transition-all">
+                <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
+                  <button onClick={() => { setEditEventId(ev.id); setEventForm({ ...ev, capacity: ev.capacity.toString(), general_tables_count: '', vip_tables_count: '' } as any); setShowEventForm(true); }} className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10"><Edit className="h-4 w-4" /></button>
+                  <button onClick={() => handleDeleteEvent(ev.id)} className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></button>
+                </div>
+                <div>
+                  <h3 className="font-bold text-foreground pr-16">{ev.title}</h3>
+                  <p className="text-xs text-muted-foreground flex items-center gap-1 mt-1">
+                    <Calendar className="h-3 w-3" /> {ev.date} · {ev.location}
+                  </p>
+                </div>
+                <div className="flex items-center gap-2">
+                  <button onClick={() => setShowTicketForm(showTicketForm === ev.id ? null : ev.id)} className="text-[10px] bg-primary/10 text-primary px-3 py-1.5 rounded-lg font-black uppercase hover:bg-primary/20 transition-all">
+                    + Gestionar Tickets
                   </button>
                 </div>
-              )}
-            </div>
-          ))}
+                {showTicketForm === ev.id && (
+                  <div className="bg-secondary/30 p-3 rounded-xl space-y-3 mt-2 border border-border/50 animate-in slide-in-from-top-2">
+                    <h4 className="text-[10px] font-black text-muted-foreground uppercase">Agregar Tipo de Entrada</h4>
+                    <input placeholder="Nombre (Ej: General, VIP)" value={ticketForm.name} onChange={(e) => setTicketForm({ ...ticketForm, name: e.target.value })} className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none focus:ring-1 focus:ring-primary" />
+                    <div className="grid grid-cols-2 gap-2">
+                      <input type="number" placeholder="Precio (Bs)" value={ticketForm.price} onChange={(e) => setTicketForm({ ...ticketForm, price: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
+                      <input type="number" placeholder="Stock" value={ticketForm.quantity} onChange={(e) => setTicketForm({ ...ticketForm, quantity: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
+                    </div>
+                    <button onClick={handleAddTicketType} className="w-full rounded-lg bg-primary py-2 text-xs font-bold text-primary-foreground hover:shadow-glow transition-all">Guardar Ticket</button>
+                  </div>
+                )}
+              </div>
+            ))}
+          </div>
         </div>
       )}
 
       {tab === 'zones' && (
         <div className="space-y-4">
-          <button onClick={() => setShowZoneForm(!showZoneForm)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98]">
-            <Plus className="h-4 w-4" /> Crear Zona / Croquis
-          </button>
-
-          {showZoneForm && (
-            <div className="glass-card p-4 space-y-3">
-              <h3 className="text-sm font-semibold text-foreground">Nueva Zona</h3>
-              <input placeholder="Nombre de la zona (Ej: VIP, Main Room)" value={zoneName} onChange={(e) => setZoneName(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
-              <div className="flex flex-col gap-2">
-                <label className="text-sm font-medium text-foreground px-1">Imagen del Croquis</label>
-                <input 
-                  type="file" 
-                  accept="image/*"
-                  onChange={(e) => setZoneImageFile(e.target.files?.[0] || null)}
-                  className="w-full rounded-xl bg-secondary px-4 py-2.5 text-sm text-foreground file:mr-4 file:rounded-lg file:border-0 file:bg-primary file:px-4 file:py-2 file:text-sm file:font-semibold file:text-primary-foreground hover:file:bg-primary/90 outline-none ring-1 ring-border focus:ring-primary cursor-pointer"
-                />
-              </div>
-              <button 
-                onClick={handleCreateZone} 
-                disabled={savingZone || !zoneName || !zoneImageFile} 
-                className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40"
-              >
-                {savingZone ? 'Creando...' : 'Guardar Zona'}
-              </button>
-            </div>
-          )}
-
-          {zonesLoading ? (
-             <div className="flex justify-center py-10"><Loader2 className="h-6 w-6 animate-spin text-primary" /></div>
-          ) : (
-            zones?.map((zone) => (
-              <div key={zone.id} className="glass-card p-4 space-y-3">
-                <div className="flex justify-between items-center">
-                  <h3 className="font-semibold text-foreground text-lg">{zone.name}</h3>
-                  {activeZoneEditorId !== zone.id && (
-                    <button 
-                      onClick={() => setActiveZoneEditorId(zone.id)}
-                      className="text-sm font-medium text-primary hover:underline"
-                    >
-                      Editar Mesas ({zone.tables_data?.length || 0})
-                    </button>
+          <div className="flex gap-2 bg-secondary p-1 rounded-xl w-fit">
+            <button onClick={() => setStatusMode('config')} className={`px-4 py-2 rounded-lg text-xs font-bold ${statusMode === 'config' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>CONFIG</button>
+            <button onClick={() => setStatusMode('status')} className={`px-4 py-2 rounded-lg text-xs font-bold ${statusMode === 'status' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>ESTADO</button>
+          </div>
+          {statusMode === 'config' ? (
+            <>
+              <button onClick={() => setShowZoneForm(!showZoneForm)} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white"><Plus className="h-4 w-4" /> Nueva Zona</button>
+              {showZoneForm && (
+                <div className="glass-card p-4 space-y-3">
+                  <input placeholder="Nombre" value={zoneName} onChange={(e) => setZoneName(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm" />
+                  <input type="file" onChange={(e) => setZoneImageFile(e.target.files?.[0] || null)} className="w-full text-sm" />
+                  <select value={zoneVisibility} onChange={(e) => setZoneVisibility(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm">
+                    <option value="all">Todos</option>
+                    <option value="rrpp_only">Solo RRPP</option>
+                    <option value="rrpp_tl_only">Solo TLs</option>
+                    <option value="admin_only">Solo Admin</option>
+                  </select>
+                  <button onClick={handleCreateZone} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white">Guardar</button>
+                </div>
+              )}
+              {zones?.map(zone => (
+                <div key={zone.id} className="glass-card p-4">
+                  <h3 className="font-bold">{zone.name}</h3>
+                  {activeZoneEditorId === zone.id ? (
+                    <MapEditor imageUrl={zone.image_url} initialTables={zone.tables_data || []} onSave={(t) => handleSaveZoneLayout(zone.id, t)} />
+                  ) : (
+                    <button onClick={() => setActiveZoneEditorId(zone.id)} className="text-sm text-primary font-bold">Editar Mesas</button>
                   )}
                 </div>
-                
-                {activeZoneEditorId === zone.id ? (
-                  <div className="pt-2">
-                    <MapEditor 
-                      imageUrl={zone.image_url} 
-                      initialTables={zone.tables_data || []} 
-                      onSave={(tables) => handleSaveZoneLayout(zone.id, tables)}
-                      isSaving={savingZoneLayout}
-                    />
-                    <button 
-                      onClick={() => setActiveZoneEditorId(null)}
-                      className="mt-4 text-xs font-medium text-muted-foreground hover:text-foreground"
-                    >
-                      Cancelar Edición
-                    </button>
-                  </div>
-                ) : (
-                  <div className="w-full md:w-1/2 aspect-video bg-secondary rounded-lg border border-border overflow-hidden relative">
-                    <img src={zone.image_url} alt={zone.name} className="w-full h-full object-cover opacity-60" />
-                    <div className="absolute inset-0 flex items-center justify-center pointer-events-none">
-                      <span className="bg-background/80 px-3 py-1 rounded truncate text-xs font-medium text-foreground backdrop-blur-sm shadow-sm border border-border">
-                        Vista previa
-                      </span>
-                    </div>
-                  </div>
-                )}
-              </div>
-            ))
-          )}
-          {(!zonesLoading && (!zones || zones.length === 0)) && (
-            <p className="text-sm text-muted-foreground text-center py-4">No hay zonas configuradas.</p>
+              ))}
+            </>
+          ) : (
+            <div className="space-y-4">
+              <select onChange={(e) => setStatusEventId(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm">
+                <option value="">Seleccionar Evento</option>
+                {events?.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+              </select>
+              {statusEventId && zones?.map(zone => <EventMapStatus key={zone.id} eventId={statusEventId} zone={zone} asAdmin={true} />)}
+            </div>
           )}
         </div>
       )}
@@ -598,76 +509,44 @@ export default function AdminDashboard() {
       {tab === 'rrpp' && (
         <div className="space-y-4">
           <div className="glass-card p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-foreground flex items-center gap-2"><UserPlus className="h-4 w-4 text-primary" /> Asignar RRPP a la Discoteca</h3>
-            <input type="email" placeholder="Email del RRPP" value={rrppEmail} onChange={(e) => setRrppEmail(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary" />
-            <select value={rrppZone} onChange={(e) => setRrppZone(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border cursor-pointer">
-              <option value="">Todas las zonas (Por Defecto)</option>
-              <option value="general">Solo General</option>
-              <option value="vip">Solo VIP</option>
-            </select>
-            <button onClick={handleAssignRRPP} disabled={assigningRRPP || !rrppEmail} className="w-full rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow disabled:opacity-40">
-              {assigningRRPP ? 'Asignando...' : 'Asignar RRPP'}
-            </button>
+            <h3 className="font-bold text-sm">Asignar RRPP</h3>
+            <input placeholder="Email" value={rrppEmail} onChange={(e) => setRrppEmail(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm" />
+            <div className="flex items-center gap-2">
+              <input type="checkbox" id="tl" checked={isTeamLeader} onChange={(e) => setIsTeamLeader(e.target.checked)} />
+              <label htmlFor="tl" className="text-sm">Team Leader</label>
+            </div>
+            <button onClick={handleAssignRRPP} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white">Asignar</button>
           </div>
-
-          <div className="glass-card p-4 space-y-3">
-            <h3 className="text-sm font-semibold text-foreground">RRPP Asignados</h3>
-            {rrppAssignments?.map((a: any) => (
-              <div key={a.id} className="flex items-center justify-between rounded-xl bg-secondary p-3">
+          <div className="space-y-2">
+            {rrppAssignments?.map(a => (
+              <div key={a.id} className="glass-card p-3 flex justify-between items-center">
                 <div>
-                  <p className="text-sm font-medium text-foreground">{a.profile?.name || 'RRPP'}</p>
-                  <p className="text-xs text-muted-foreground">{a.profile?.email} · RRPP Oficial {a.zone_type ? `(${a.zone_type === 'vip' ? 'Solo VIP' : 'Solo General'})` : '(Todas las Zonas)'}</p>
+                  <p className="text-sm font-bold">{a.profile?.name} {a.is_team_leader && '(TL)'}</p>
+                  <p className="text-xs text-muted-foreground">Por: {a.creatorProfile?.name || 'Admin'}</p>
                 </div>
-                <div className="flex items-center gap-3">
-                  <span className="rounded-lg bg-primary/15 px-2 py-1 text-xs font-mono text-primary">{a.unique_code}</span>
-                  <button onClick={() => handleDeleteRRPP(a.id)} className="text-muted-foreground hover:text-destructive transition-colors touch-target">
-                    <Trash2 className="h-4 w-4" />
-                  </button>
-                </div>
+                <button onClick={() => handleDeleteRRPP(a.id)} className="text-destructive"><Trash2 className="h-4 w-4" /></button>
               </div>
             ))}
-            {(!rrppAssignments || rrppAssignments.length === 0) && (
-              <p className="text-sm text-muted-foreground text-center py-4">No hay RRPP asignados aún</p>
-            )}
-          </div>
-        </div>
-      )}
-      {tab === 'sales' && (
-        <div className="space-y-4">
-          <div className="glass-card p-4 space-y-3">
-             <h3 className="text-sm font-semibold text-foreground">Registro General de Ventas (Reservas Activas / Usadas)</h3>
-             {reservations?.length === 0 ? (
-               <p className="text-sm text-muted-foreground text-center py-4">No hay ventas registradas.</p>
-             ) : (
-               <div className="space-y-2">
-                 {reservations?.map((r: any) => {
-                    const evt = events?.find(e => e.id === r.event_id);
-                    const isFreeLog = r.type === 'rrpp_free' || r.type === 'mesa_vip';
-                    const isRRPP = !!r.rrpp_id;
-                    const rrppName = isRRPP ? (rrppAssignments?.find(a => a.user_id === r.rrpp_id)?.profile?.name || 'RRPP') : null;
-                    return (
-                      <div key={r.id} className="flex flex-col sm:flex-row sm:items-center justify-between rounded-xl bg-secondary p-3 gap-2">
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{evt?.title || 'Evento'} <span className="text-muted-foreground font-normal">({r.type})</span></p>
-                          <p className="text-xs text-muted-foreground font-mono">{r.code} · {r.status}</p>
-                        </div>
-                        <div className="text-left sm:text-right flex flex-row sm:flex-col justify-between sm:justify-center items-center sm:items-end">
-                          <p className={`text-sm font-bold ${isFreeLog ? 'text-success' : 'text-primary'}`}>
-                            {isFreeLog ? 'Cortesía' : 'Venta'}
-                          </p>
-                          <p className="text-[10px] uppercase font-semibold text-muted-foreground">
-                            {isRRPP ? `RRPP: ${rrppName}` : `Cliente Directo Vía App`}
-                          </p>
-                        </div>
-                      </div>
-                    );
-                 })}
-               </div>
-             )}
           </div>
         </div>
       )}
 
+      {tab === 'sales' && (
+        <div className="glass-card p-4 space-y-4">
+          <h3 className="font-bold">Registro de Ventas</h3>
+          <div className="space-y-2">
+            {reservations?.map(r => (
+              <div key={r.id} className="rounded-xl bg-secondary p-3 flex justify-between">
+                <div>
+                  <p className="text-sm font-bold">{r.guest_name || 'Cliente'}</p>
+                  <p className="text-xs text-muted-foreground">{r.code}</p>
+                </div>
+                <p className="text-sm font-bold text-primary">Bs. {r.ticket_types?.price || 0}</p>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
     </motion.div>
   );
 }

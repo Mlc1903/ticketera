@@ -42,16 +42,16 @@ export default function EventCard({ event, index }: { event: EventWithTickets; i
               <span className="rounded-lg bg-primary/90 px-2.5 py-1 text-xs font-semibold text-primary-foreground backdrop-blur-sm">
                 Desde Bs. {lowestPrice}
               </span>
-              <span className={`rounded-lg px-2.5 py-1 text-xs font-semibold backdrop-blur-sm ${
+              {/*<span className={`rounded-lg px-2.5 py-1 text-xs font-semibold backdrop-blur-sm ${
                 capacityPercent > 80 ? 'bg-destructive/90 text-destructive-foreground' : 'bg-success/90 text-success-foreground'
               }`}>
                 {capacityPercent}% vendido
-              </span>
+              </span>*/}
             </div>
           </div>
           <div className="p-4 space-y-2">
             <h3 className="text-lg font-bold text-foreground leading-tight group-hover:text-primary transition-colors">
-              {event.title}
+              {event.title} {event.organizations?.name ? `- ${event.organizations.name}` : ''}
             </h3>
             <div className="flex flex-wrap gap-3 text-sm text-muted-foreground">
               <span className="flex items-center gap-1.5">
@@ -62,10 +62,10 @@ export default function EventCard({ event, index }: { event: EventWithTickets; i
                 <MapPin className="h-3.5 w-3.5" />
                 {event.location.split('—')[0].trim()}
               </span>
-              <span className="flex items-center gap-1.5">
+              {/*<span className="flex items-center gap-1.5">
                 <Users className="h-3.5 w-3.5" />
                 {event.capacity - totalSold} disponibles
-              </span>
+              </span>*/}
             </div>
           </div>
         </div>

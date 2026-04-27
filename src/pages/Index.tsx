@@ -10,7 +10,8 @@ export default function Index() {
 
   const filteredEvents = events?.filter(event => 
     event.title.toLowerCase().includes(searchTerm.toLowerCase()) || 
-    event.location.toLowerCase().includes(searchTerm.toLowerCase())
+    event.location.toLowerCase().includes(searchTerm.toLowerCase()) ||
+    event.organizations?.name.toLowerCase().includes(searchTerm.toLowerCase())
   );
 
   return (

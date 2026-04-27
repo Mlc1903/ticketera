@@ -108,8 +108,28 @@ export default function MapEditor({ imageUrl, initialTables = [], onSave, isSavi
                   className="w-full rounded-lg bg-secondary px-3 py-2 text-sm outline-none ring-1 ring-border focus:ring-primary text-foreground"
                 />
               </div>
-              <div className="space-y-2">
-                <label className="text-xs font-medium text-foreground">Tamaño (Radio %)</label>
+              <div className="grid grid-cols-2 gap-2">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase">Precio (Bs)</label>
+                  <input 
+                    type="number" 
+                    value={selectedTable.price || 0}
+                    onChange={(e) => updateTable(selectedTable.id, { price: parseFloat(e.target.value) || 0 })}
+                    className="w-full rounded-lg bg-secondary px-3 py-2 text-sm outline-none ring-1 ring-border focus:ring-primary text-foreground"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-bold text-muted-foreground uppercase">Entradas Incl.</label>
+                  <input 
+                    type="number" 
+                    value={selectedTable.tickets_included || 0}
+                    onChange={(e) => updateTable(selectedTable.id, { tickets_included: parseInt(e.target.value) || 0 })}
+                    className="w-full rounded-lg bg-secondary px-3 py-2 text-sm outline-none ring-1 ring-border focus:ring-primary text-foreground"
+                  />
+                </div>
+              </div>
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase">Tamaño (Radio %)</label>
                 <input 
                   type="number" 
                   step="0.5"

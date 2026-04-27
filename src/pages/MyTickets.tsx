@@ -83,7 +83,7 @@ export default function MyTickets() {
                     <div>
                       <h2 className="font-bold text-white text-xl uppercase leading-tight tracking-wide">{event?.title || 'Evento'}</h2>
                       <p className="text-gray-300 mt-1">{event?.location || 'Ubicación no especificada'}</p>
-                      <p className="text-gray-300">1 entrada(s) - <span className="font-medium text-white">{r.type}</span></p>
+                      <p className="text-gray-300">{r.quantity || 1} entrada(s) - <span className="font-medium text-white uppercase">{r.type?.replace('_', ' ')}</span></p>
                     </div>
                   </div>
 

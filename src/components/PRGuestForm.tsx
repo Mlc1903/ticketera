@@ -83,11 +83,23 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
   const reset = () => { setGeneratedCode(null); setName(''); };
 
   const typeOptions: { value: GuestType; label: string; desc: string }[] = allowGuests ? [
-    { value: 'rrpp_free', label: 'VIP Gratis', desc: 'Invitación gratuita' },
-    { value: 'mesa_vip', label: 'Mesa VIP', desc: 'Reserva de mesa' },
-  ] : [
-    { value: 'mesa_vip', label: 'Mesa VIP', desc: 'Reserva de mesa' },
-  ];
+    { 
+      value: 'rrpp_free', 
+      label: 'VIP Gratis', 
+      desc: eventData?.free_pass_until 
+        ? `Válido hasta ${eventData.free_pass_until.substring(0, 5)}` 
+        : 'Invitación gratuita' 
+    }
+  ] : [];
+
+  if (!allowGuests) {
+    return (
+      <div className="glass-card p-5 text-center space-y-2">
+        <UserPlus className="h-8 w-8 text-muted-foreground mx-auto" />
+        <p className="text-sm text-muted-foreground">Este evento no permite pases de cortesía.</p>
+      </div>
+    );
+  }
 
   return (
     <div className="glass-card p-5 space-y-4">
@@ -98,7 +110,7 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
 
       {!generatedCode ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-3 gap-2">
+          <div className="grid grid-cols-1 gap-2">
             {typeOptions.map((opt) => (
               <button
                 key={opt.value}
@@ -121,51 +133,6 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
             value={name}
             onChange={(e) => setName(e.target.value)}
           />
-
-          {guestType === 'mesa_vip' && eventData?.organization_id && (
-            <div className="p-4 rounded-xl border border-warning bg-warning/5 space-y-3">
-               <h4 className="font-semibold text-warning text-sm flex items-center gap-2">
-                 <UserPlus className="h-4 w-4" /> Selección de Mesa VIP
-               </h4>
-               {selectedTable ? (
-                 <div className="flex items-center justify-between bg-background p-3 rounded-xl border border-border">
-                   <div>
-                     <p className="text-sm font-semibold">{selectedTable.label}</p>
-                     <p className="text-xs text-muted-foreground">{selectedTable.zoneName}</p>
-                   </div>
-                   <button onClick={() => setShowMap(true)} className="text-xs text-primary font-medium hover:underline">
-                     Cambiar
-                   </button>
-                 </div>
-               ) : (
-                 <button onClick={() => setShowMap(true)} className="w-full rounded-xl bg-warning text-warning-foreground py-2 text-sm font-semibold transition-all hover:bg-warning/90">
-                   Elegir Mesa en Croquis
-                 </button>
-               )}
-
-               {showMap && (
-                 <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex justify-center pb-20 items-center overflow-y-auto w-full">
-                   <div className="w-full max-w-2xl bg-card rounded-2xl shadow-xl border border-border p-4 mx-4">
-                     <div className="flex justify-between items-center mb-4">
-                       <h3 className="font-bold">Croquis</h3>
-                       <button onClick={() => setShowMap(false)} className="text-muted-foreground hover:text-foreground text-sm font-semibold">Cerrar</button>
-                     </div>
-                     <InteractiveMapSelector 
-                       organizationId={eventData.organization_id} 
-                       eventId={eventId} 
-                       selectedTableId={selectedTable?.id || null} 
-                       onSelectTable={(id, zone, label) => id ? setSelectedTable({ id, zoneName: zone, label }) : setSelectedTable(null)} 
-                     />
-                     <div className="mt-4 flex justify-end">
-                       <button onClick={() => setShowMap(false)} disabled={!selectedTable} className="rounded-xl bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40 hover:shadow-glow">
-                         Confirmar Mesa
-                       </button>
-                     </div>
-                   </div>
-                 </div>
-               )}
-            </div>
-          )}
 
           <button
             onClick={handleAddGuest}

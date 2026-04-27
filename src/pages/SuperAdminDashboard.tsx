@@ -1,10 +1,11 @@
 import { useState } from 'react';
-import { Building2, Plus, Users, Loader2, CheckCircle } from 'lucide-react';
+import { Building2, Plus, Users, Loader2, CheckCircle, XCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { useAuth } from '@/hooks/useAuth';
 import { toast } from 'sonner';
+import { ZoneTable } from '@/hooks/useSupabaseData';
 
 type Tab = 'organizations' | 'approvals';
 
@@ -40,7 +41,7 @@ export default function SuperAdminDashboard() {
         .order('created_at', { ascending: false });
       if (error) throw error;
 
-      // Group profiles to get names
+      // Get profile info
       const uids = [...new Set((data || []).flatMap((r: any) => [r.user_id, r.rrpp_id]).filter(Boolean))];
       let pMap: any = {};
       if (uids.length > 0) {
@@ -48,7 +49,6 @@ export default function SuperAdminDashboard() {
         pMap = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p]));
       }
 
-      // Fetch organization names manually since deep embedding might be tricky if relations aren't well defined
       const { data: allOrgs } = await supabase.from('organizations').select('id, name');
       const orgMap = Object.fromEntries((allOrgs || []).map((o: any) => [o.id, o.name]));
 
@@ -101,7 +101,6 @@ export default function SuperAdminDashboard() {
         .maybeSingle();
       if (!profile) { toast.error('Usuario no encontrado'); setAddingOwner(false); return; }
 
-      // Update their app role to admin
       const { data: existing } = await supabase
         .from('user_roles')
         .select('id')
@@ -128,30 +127,90 @@ export default function SuperAdminDashboard() {
   };
 
   const handleApproveRequest = async (req: any) => {
-    if (!confirm('¿Confirmas que recibiste el pago para aprobar esta compra en toda la plataforma?')) return;
+    if (!confirm('¿Confirmas que recibiste el pago para aprobar esta compra?')) return;
     try {
-      const { error: updErr } = await supabase.from('purchase_requests' as any).update({ status: 'approved' }).eq('id', req.id);
+      // 1. Update status
+      const { error: updErr } = await supabase
+        .from('purchase_requests' as any)
+        .update({ status: 'approved' })
+        .eq('id', req.id);
+
       if (updErr) throw updErr;
 
+      // 2. Create or activate reservations
       const tts = req.ticket_types as any[];
       for (const tt of tts) {
-        for (let i = 0; i < tt.quantity; i++) {
-          const { data: codeData } = await supabase.rpc('generate_ticket_code', { prefix: req.events.title.substring(0, 4).toUpperCase().replace(/\s/g, '') });
-          const code = codeData || `TKT-${req.id.split('-')[0]}-${i}`;
+        // Handle mesa quantity logic
+        let finalQtyForMesa = tt.quantity;
+        const isMesa = tt.type === 'mesa_vip' && tt.zone_table_id;
 
-          const { error: resErr } = await supabase.from('reservations').insert({
-            code,
-            event_id: req.event_id,
-            ticket_type_id: tt.ticket_type_id,
-            user_id: req.user_id,
-            rrpp_id: req.rrpp_id,
-            type: tt.type,
-            quantity: 1,
-            status: 'active'
-          });
-          if (resErr) console.error('Error insertando ticket', resErr);
+        if (isMesa) {
+           const { data: zones } = await supabase.from('organization_zones').select('tables_data');
+           const allTables = zones?.flatMap(z => z.tables_data as ZoneTable[]) || [];
+           const table = allTables.find(t => t.id === tt.zone_table_id);
+           if (table?.tickets_included) finalQtyForMesa = table.tickets_included;
+
+           // ACTIVATE PENDING MESA
+           const { data: existingPending } = await supabase
+             .from('reservations')
+             .select('id')
+             .eq('event_id', req.event_id)
+             .eq('table_id', tt.zone_table_id)
+             .eq('status', 'pending')
+             .maybeSingle();
+
+           const { data: codeData } = await supabase.rpc('generate_ticket_code', { 
+             prefix: req.events.title.substring(0, 3).toUpperCase() 
+           });
+           const code = codeData || `TKT-${Date.now()}`;
+
+           if (existingPending) {
+             await supabase.from('reservations').update({
+               status: 'active',
+               code: code,
+               quantity: finalQtyForMesa,
+               user_id: req.user_id,
+               rrpp_id: req.rrpp_id
+             }).eq('id', existingPending.id);
+           } else {
+             await supabase.from('reservations').insert({
+               code,
+               event_id: req.event_id,
+               ticket_type_id: tt.ticket_type_id,
+               user_id: req.user_id,
+               rrpp_id: req.rrpp_id,
+               guest_name: `Mesa - ${req.buyerProfile?.name || 'Cliente'}`,
+               type: 'mesa_vip',
+               quantity: finalQtyForMesa,
+               table_id: tt.zone_table_id,
+               status: 'active'
+             });
+           }
+        } else {
+          // NORMAL TICKETS: Generate one individual reservation per quantity
+          for (let i = 0; i < tt.quantity; i++) {
+            const { data: codeData } = await supabase.rpc('generate_ticket_code', { 
+              prefix: req.events.title.substring(0, 3).toUpperCase() 
+            });
+            const code = codeData || `TKT-${Date.now()}-${i}`;
+
+            await supabase.from('reservations').insert({
+              code,
+              event_id: req.event_id,
+              ticket_type_id: tt.ticket_type_id,
+              user_id: req.user_id,
+              rrpp_id: req.rrpp_id,
+              guest_name: req.buyerProfile?.name || 'Cliente',
+              type: tt.type,
+              quantity: 1, // Individual ticket
+              status: 'active'
+            });
+          }
         }
       }
+
+      // 3. Delete the request
+      await supabase.from('purchase_requests' as any).delete().eq('id', req.id);
 
       toast.success('Pago aprobado y entradas generadas');
       queryClient.invalidateQueries({ queryKey: ['super-admin-purchase-requests'] });
@@ -163,8 +222,18 @@ export default function SuperAdminDashboard() {
   const handleRejectRequest = async (id: string) => {
     if (!confirm('¿Estás seguro de RECHAZAR y eliminar esta solicitud de compra?')) return;
     try {
-      const { error } = await supabase.from('purchase_requests' as any).delete().eq('id', id);
+      const { data, error } = await supabase
+        .from('purchase_requests' as any)
+        .delete()
+        .eq('id', id)
+        .select();
+
       if (error) throw error;
+
+      if (!data || data.length === 0) {
+        throw new Error('No se pudo rechazar la solicitud. Verifica tus permisos de administrador.');
+      }
+
       toast.success('Solicitud rechazada');
       queryClient.invalidateQueries({ queryKey: ['super-admin-purchase-requests'] });
     } catch (err: any) {

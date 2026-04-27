@@ -2,17 +2,29 @@ import { useState } from 'react';
 import { Users, BarChart3, Ticket, UserCheck, Loader2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
-import { useRRPPAssignments, useRRPPEvents, useReservations } from '@/hooks/useSupabaseData';
 import PRGuestForm from '@/components/PRGuestForm';
 import TicketSelector from '@/components/TicketSelector';
+import TeamManager from '@/components/TeamManager';
+import EventMapStatus from '@/components/EventMapStatus';
+import { useEvents, useReservations, useRRPPAssignments, useRRPPEvents, useZones } from '@/hooks/useSupabaseData';
 
 export default function RRPPDashboard() {
   const { user } = useAuth();
-  const { data: assignments, isLoading: loadingAssignments } = useRRPPAssignments(user?.id);
   const { data: assignedEvents, isLoading: loadingEvents } = useRRPPEvents(user?.id);
   const [activeIdx, setActiveIdx] = useState(0);
-  const [rrppTab, setRrppTab] = useState<'guest'|'sell'>('guest');
+  const [rrppTab, setRrppTab] = useState<'guest'|'sell'|'team'|'maps'>('guest');
   const activeEvent = assignedEvents?.[activeIdx];
+
+  const { data: assignments, isLoading: loadingAssignments } = useRRPPAssignments(user?.id);
+  const { data: zones } = useZones(activeEvent?.organization_id);
+  const isTL = assignments?.find(a => a.organization_id === activeEvent?.organization_id)?.is_team_leader;
+
+  const visibleZones = zones?.filter(z => {
+    if (z.visibility === 'all') return true;
+    if (z.visibility === 'rrpp_only') return true;
+    if (z.visibility === 'rrpp_tl_only' && isTL) return true;
+    return false;
+  });
 
   const { data: rrppReservations } = useReservations({
     eventId: activeEvent?.id,
@@ -61,7 +73,7 @@ export default function RRPPDashboard() {
         <div className="flex gap-2 overflow-x-auto pb-1">
           {assignedEvents.map((ev: any, i: number) => (
             <button key={ev.id} onClick={() => setActiveIdx(i)} className={`whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-medium transition-all touch-target ${activeIdx === i ? 'bg-primary text-primary-foreground shadow-glow' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>
-              {ev.title}
+              {ev.title} {ev.organizations?.name ? `- ${ev.organizations.name}` : ''}
             </button>
           ))}
         </div>
@@ -89,11 +101,32 @@ export default function RRPPDashboard() {
           <button onClick={() => setRrppTab('sell')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${rrppTab === 'sell' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
             Vender Entradas
           </button>
+          {visibleZones && visibleZones.length > 0 && (
+            <button onClick={() => setRrppTab('maps')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${rrppTab === 'maps' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              Croquis
+            </button>
+          )}
+          {isTL && (
+            <button onClick={() => setRrppTab('team')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${rrppTab === 'team' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
+              Mi Equipo
+            </button>
+          )}
         </div>
       )}
 
       {activeEvent && rrppTab === 'guest' && <PRGuestForm eventId={activeEvent.id} eventTitle={activeEvent.title} allowGuests={activeEvent.allow_rrpp_guests} />}
       {activeEvent && rrppTab === 'sell' && <TicketSelector eventId={activeEvent.id} eventTitle={activeEvent.title} ticketTypes={activeEvent.ticket_types || []} asRRPP={true} />}
+      {activeEvent && rrppTab === 'team' && isTL && <TeamManager organizationId={activeEvent.organization_id!} />}
+      {activeEvent && rrppTab === 'maps' && visibleZones && (
+        <div className="space-y-6">
+          {visibleZones.map(zone => (
+            <div key={zone.id} className="space-y-2">
+              <h3 className="text-lg font-bold text-foreground px-1">{zone.name}</h3>
+              <EventMapStatus eventId={activeEvent.id} zone={zone} />
+            </div>
+          ))}
+        </div>
+      )}
 
       {rrppReservations && rrppReservations.length > 0 && (
         <div className="glass-card p-4 space-y-3">

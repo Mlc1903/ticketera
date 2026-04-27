@@ -29,7 +29,7 @@ export default function Layout({ children }: { children: React.ReactNode }) {
             <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
               <Ticket className="h-4 w-4 text-primary-foreground" />
             </div>
-            <span className="text-lg font-bold text-foreground">NitePass</span>
+            <span className="text-lg font-bold text-foreground">NightPass</span>
           </Link>
 
           {/* Org selector */}
@@ -58,9 +58,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                 <Link
                   key={item.path}
                   to={item.path}
-                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors touch-target ${
-                    active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                  }`}
+                  className={`flex items-center gap-2 rounded-lg px-3 py-2 text-sm font-medium transition-colors touch-target ${active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                    }`}
                 >
                   <Icon className="h-4 w-4" />
                   {item.label}
@@ -125,9 +124,8 @@ export default function Layout({ children }: { children: React.ReactNode }) {
                       key={item.path}
                       to={item.path}
                       onClick={() => setMobileMenuOpen(false)}
-                      className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors touch-target ${
-                        active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
-                      }`}
+                      className={`flex items-center gap-3 rounded-lg px-3 py-3 text-sm font-medium transition-colors touch-target ${active ? 'bg-primary/10 text-primary' : 'text-muted-foreground hover:text-foreground hover:bg-secondary'
+                        }`}
                     >
                       <Icon className="h-5 w-5" />
                       {item.label}
