@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit } from 'lucide-react';
+import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,7 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import EventMapStatus from '@/components/EventMapStatus';
 
-type Tab = 'overview' | 'checkin' | 'events' | 'rrpp' | 'sales' | 'approvals' | 'zones';
+type Tab = 'overview' | 'checkin' | 'events' | 'zones' | 'rrpp' | 'sales' | 'consumo';
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -24,7 +24,7 @@ export default function AdminDashboard() {
 
   // Event form state
   const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true });
+  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [savingEvent, setSavingEvent] = useState(false);
   const [editEventId, setEditEventId] = useState<string | null>(null);
@@ -45,6 +45,9 @@ export default function AdminDashboard() {
   const [zoneVisibility, setZoneVisibility] = useState('all');
   const [statusEventId, setStatusEventId] = useState<string | null>(null);
   const [statusMode, setStatusMode] = useState<'config' | 'status'>('config');
+  const [selectedEventStatsId, setSelectedEventStatsId] = useState<string | null>(null);
+  const [selectedConsumoEventId, setSelectedConsumoEventId] = useState<string | null>(null);
+  const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
 
   // Ticket type form state
   const [showTicketForm, setShowTicketForm] = useState<string | null>(null);
@@ -59,9 +62,10 @@ export default function AdminDashboard() {
     { value: 'overview', label: 'Resumen', icon: BarChart3 },
     { value: 'checkin', label: 'Check-in', icon: ScanLine },
     { value: 'events', label: 'Eventos', icon: Calendar },
-    { value: 'zones', label: 'Croquis', icon: MapPin },
+    { value: 'zones', label: 'Mesas', icon: MapPin },
     { value: 'rrpp', label: 'RRPP', icon: Users },
-    { value: 'sales', label: 'Ventas', icon: DollarSign },
+    { value: 'sales', label: 'Gestión', icon: DollarSign },
+    { value: 'consumo', label: 'Consumo', icon: Zap },
   ];
 
   // Fetch RRPP assignments
@@ -134,6 +138,9 @@ export default function AdminDashboard() {
           is_free_pass: eventForm.is_free_pass,
           free_pass_until: eventForm.is_free_pass && eventForm.free_pass_until ? eventForm.free_pass_until : null,
           allow_rrpp_guests: eventForm.allow_rrpp_guests,
+          rrpp_guests_per_promoter: parseInt(eventForm.rrpp_guests_per_promoter as string) || 0,
+          consumo_general_requirement: parseInt(eventForm.consumo_general_requirement as string) || 0,
+          consumo_vip_requirement: parseInt(eventForm.consumo_vip_requirement as string) || 0,
           ...(uploadedImageUrl ? { image_url: uploadedImageUrl } : {}),
         }).eq('id', editEventId);
         if (error) throw error;
@@ -152,6 +159,9 @@ export default function AdminDashboard() {
           is_free_pass: eventForm.is_free_pass,
           free_pass_until: eventForm.is_free_pass && eventForm.free_pass_until ? eventForm.free_pass_until : null,
           allow_rrpp_guests: eventForm.allow_rrpp_guests,
+          rrpp_guests_per_promoter: parseInt(eventForm.rrpp_guests_per_promoter as string) || 0,
+          consumo_general_requirement: parseInt(eventForm.consumo_general_requirement as string) || 0,
+          consumo_vip_requirement: parseInt(eventForm.consumo_vip_requirement as string) || 0,
           image_url: uploadedImageUrl,
         }).select().single();
         if (error) throw error;
@@ -166,7 +176,7 @@ export default function AdminDashboard() {
         }
         toast.success('Evento creado');
       }
-      setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true });
+      setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' });
       setImageFile(null);
       setShowEventForm(false);
       setEditEventId(null);
@@ -227,6 +237,7 @@ export default function AdminDashboard() {
       toast.success('RRPP asignado');
       setRrppEmail('');
       setIsTeamLeader(false);
+      setRrppZone('');
       queryClient.invalidateQueries({ queryKey: ['admin-rrpp-assignments'] });
     } catch (err: any) {
       toast.error(err.message || 'Error');
@@ -347,7 +358,7 @@ export default function AdminDashboard() {
 
       {tab === 'events' && (
         <div className="space-y-4">
-          <button onClick={() => { setEditEventId(null); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true }); setShowEventForm(!showEventForm); }} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all">
+          <button onClick={() => { setEditEventId(null); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' }); setShowEventForm(!showEventForm); }} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all">
             <Plus className="h-4 w-4" /> {showEventForm ? 'Cerrar Formulario' : 'Crear Evento'}
           </button>
 
@@ -407,13 +418,56 @@ export default function AdminDashboard() {
                   </div>
                 )}
 
-                <label className="flex items-center gap-3 cursor-pointer group ml-auto">
-                  <input type="checkbox" checked={eventForm.allow_rrpp_guests} onChange={(e) => setEventForm({ ...eventForm, allow_rrpp_guests: e.target.checked })} className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary bg-secondary" />
-                  <div className="flex flex-col">
-                    <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Lista RRPP</span>
-                    <span className="text-[10px] text-muted-foreground">Permitir que RRPPs anoten invitados</span>
+                <div className="flex items-center gap-3 ml-auto">
+                  <label className="flex items-center gap-3 cursor-pointer group">
+                    <input type="checkbox" checked={eventForm.allow_rrpp_guests} onChange={(e) => setEventForm({ ...eventForm, allow_rrpp_guests: e.target.checked })} className="w-5 h-5 rounded-lg border-border text-primary focus:ring-primary bg-secondary" />
+                    <div className="flex flex-col">
+                      <span className="text-sm font-bold text-foreground group-hover:text-primary transition-colors">Lista RRPP</span>
+                      <span className="text-[10px] text-muted-foreground">Permitir invitados</span>
+                    </div>
+                  </label>
+                  {eventForm.allow_rrpp_guests && (
+                    <div className="flex items-center gap-2 animate-in slide-in-from-right-2 duration-300">
+                      <input 
+                        type="number" 
+                        placeholder="Límite" 
+                        value={eventForm.rrpp_guests_per_promoter} 
+                        onChange={(e) => setEventForm({ ...eventForm, rrpp_guests_per_promoter: e.target.value })} 
+                        className="w-16 rounded-lg bg-background px-2 py-1.5 text-xs border border-primary/30 outline-none focus:ring-2 focus:ring-primary/20 text-foreground text-center" 
+                      />
+                      <span className="text-[9px] font-black text-primary uppercase">Por RRPP</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              <div className="grid grid-cols-2 gap-4 p-4 bg-primary/5 rounded-xl border border-primary/20">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-primary uppercase px-1">Meta Consumo General</label>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      placeholder="Check-ins req." 
+                      value={eventForm.consumo_general_requirement} 
+                      onChange={(e) => setEventForm({ ...eventForm, consumo_general_requirement: e.target.value })} 
+                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-primary/20 outline-none focus:ring-2 focus:ring-primary/20 text-foreground" 
+                    />
+                    <Zap className="h-4 w-4 text-primary shrink-0" />
                   </div>
-                </label>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-warning uppercase px-1">Meta Consumo VIP</label>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      placeholder="Check-ins req." 
+                      value={eventForm.consumo_vip_requirement} 
+                      onChange={(e) => setEventForm({ ...eventForm, consumo_vip_requirement: e.target.value })} 
+                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-warning/20 outline-none focus:ring-2 focus:ring-warning/20 text-foreground" 
+                    />
+                    <Zap className="h-4 w-4 text-warning shrink-0" />
+                  </div>
+                </div>
               </div>
 
               <div className="flex gap-3 pt-2">
@@ -430,8 +484,27 @@ export default function AdminDashboard() {
             {events?.map((ev) => (
               <div key={ev.id} className="glass-card p-4 space-y-3 relative group border-border/50 hover:border-primary/30 transition-all">
                 <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button onClick={() => { setEditEventId(ev.id); setEventForm({ ...ev, capacity: ev.capacity.toString(), general_tables_count: '', vip_tables_count: '' } as any); setShowEventForm(true); }} className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10"><Edit className="h-4 w-4" /></button>
-                  <button onClick={() => handleDeleteEvent(ev.id)} className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-destructive hover:bg-destructive/10"><Trash2 className="h-4 w-4" /></button>
+                  <button 
+                    onClick={() => { 
+                      setEditEventId(ev.id); 
+                      setEventForm({ 
+                        ...ev, 
+                        capacity: ev.capacity.toString(), 
+                        general_tables_count: '', 
+                        vip_tables_count: '', 
+                        rrpp_guests_per_promoter: ev.rrpp_guests_per_promoter?.toString() || '', 
+                        consumo_general_requirement: ev.consumo_general_requirement?.toString() || '', 
+                        consumo_vip_requirement: ev.consumo_vip_requirement?.toString() || '' 
+                      } as any); 
+                      setShowEventForm(true); 
+                    }} 
+                    className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10"
+                  >
+                    <Edit className="h-4 w-4" />
+                  </button>
+                  <button onClick={() => handleDeleteEvent(ev.id)} className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-destructive hover:bg-destructive/10">
+                    <Trash2 className="h-4 w-4" />
+                  </button>
                 </div>
                 <div>
                   <h3 className="font-bold text-foreground pr-16">{ev.title}</h3>
@@ -511,17 +584,35 @@ export default function AdminDashboard() {
           <div className="glass-card p-4 space-y-3">
             <h3 className="font-bold text-sm">Asignar RRPP</h3>
             <input placeholder="Email" value={rrppEmail} onChange={(e) => setRrppEmail(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm" />
-            <div className="flex items-center gap-2">
-              <input type="checkbox" id="tl" checked={isTeamLeader} onChange={(e) => setIsTeamLeader(e.target.checked)} />
-              <label htmlFor="tl" className="text-sm">Team Leader</label>
+            <div className="grid grid-cols-2 gap-2">
+              <div className="flex items-center gap-2 px-1">
+                <input type="checkbox" id="tl" checked={isTeamLeader} onChange={(e) => setIsTeamLeader(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
+                <label htmlFor="tl" className="text-xs font-medium text-foreground">Team Leader</label>
+              </div>
+              <select 
+                value={rrppZone} 
+                onChange={(e) => setRrppZone(e.target.value)} 
+                className="rounded-lg bg-secondary px-3 py-2 text-xs border border-border focus:ring-1 focus:ring-primary outline-none"
+              >
+                <option value="">Rango (Default)</option>
+                <option value="general">General</option>
+                <option value="vip">VIP</option>
+              </select>
             </div>
-            <button onClick={handleAssignRRPP} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white">Asignar</button>
+            <button onClick={handleAssignRRPP} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white hover:shadow-glow transition-all active:scale-[0.98]">Asignar</button>
           </div>
           <div className="space-y-2">
             {rrppAssignments?.map(a => (
               <div key={a.id} className="glass-card p-3 flex justify-between items-center">
                 <div>
-                  <p className="text-sm font-bold">{a.profile?.name} {a.is_team_leader && '(TL)'}</p>
+                  <div className="flex items-center gap-2">
+                    <p className="text-sm font-bold">{a.profile?.name} {a.is_team_leader && '(TL)'}</p>
+                    {a.zone_type && (
+                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type === 'vip' ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-primary/20 text-primary border border-primary/30'}`}>
+                        {a.zone_type}
+                      </span>
+                    )}
+                  </div>
                   <p className="text-xs text-muted-foreground">Por: {a.creatorProfile?.name || 'Admin'}</p>
                 </div>
                 <button onClick={() => handleDeleteRRPP(a.id)} className="text-destructive"><Trash2 className="h-4 w-4" /></button>
@@ -531,20 +622,289 @@ export default function AdminDashboard() {
         </div>
       )}
 
-      {tab === 'sales' && (
-        <div className="glass-card p-4 space-y-4">
-          <h3 className="font-bold">Registro de Ventas</h3>
-          <div className="space-y-2">
-            {reservations?.map(r => (
-              <div key={r.id} className="rounded-xl bg-secondary p-3 flex justify-between">
-                <div>
-                  <p className="text-sm font-bold">{r.guest_name || 'Cliente'}</p>
-                  <p className="text-xs text-muted-foreground">{r.code}</p>
+      {tab === 'consumo' && (
+        <div className="space-y-4">
+          <div className="glass-card p-4 space-y-4">
+            <h3 className="font-bold text-lg text-foreground">Configuración de Consumo</h3>
+            <select 
+              value={selectedConsumoEventId || ''} 
+              onChange={(e) => setSelectedConsumoEventId(e.target.value)}
+              className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary cursor-pointer"
+            >
+              <option value="">-- Seleccionar Evento --</option>
+              {events?.map(ev => (
+                <option key={ev.id} value={ev.id}>{ev.title} ({ev.date})</option>
+              ))}
+            </select>
+
+            {selectedConsumoEventId && (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
+                <div className="p-4 bg-primary/5 rounded-xl border border-primary/20 space-y-2">
+                  <p className="text-[10px] font-black text-primary uppercase">Meta RRPP General</p>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      value={events?.find(e => e.id === selectedConsumoEventId)?.consumo_general_requirement || 0}
+                      readOnly
+                      className="w-16 bg-background rounded-lg px-2 py-1.5 text-center font-bold text-sm border border-border"
+                    />
+                    <span className="text-xs text-muted-foreground">Check-ins requeridos</span>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground italic">* Configúralo al editar el evento</p>
                 </div>
-                <p className="text-sm font-bold text-primary">Bs. {r.ticket_types?.price || 0}</p>
+                <div className="p-4 bg-warning/5 rounded-xl border border-warning/20 space-y-2">
+                  <p className="text-[10px] font-black text-warning uppercase">Meta RRPP VIP</p>
+                  <div className="flex items-center gap-2">
+                    <input 
+                      type="number" 
+                      value={events?.find(e => e.id === selectedConsumoEventId)?.consumo_vip_requirement || 0}
+                      readOnly
+                      className="w-16 bg-background rounded-lg px-2 py-1.5 text-center font-bold text-sm border border-border"
+                    />
+                    <span className="text-xs text-muted-foreground">Check-ins requeridos</span>
+                  </div>
+                  <p className="text-[9px] text-muted-foreground italic">* Configúralo al editar el evento</p>
+                </div>
               </div>
-            ))}
+            )}
           </div>
+
+          {selectedConsumoEventId && (
+            <div className="glass-card p-4">
+              <div className="flex justify-between items-center mb-4">
+                <h3 className="font-bold">Estado de RRPP</h3>
+                <div className="flex gap-4 text-[10px] font-bold text-muted-foreground">
+                  <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-success"></div> Habilitado</div>
+                  <div className="flex items-center gap-1"><div className="w-2 h-2 rounded-full bg-muted"></div> Pendiente</div>
+                </div>
+              </div>
+              <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
+                {rrppAssignments?.map(a => {
+                  const checkins = reservations?.filter(r => r.event_id === selectedConsumoEventId && r.rrpp_id === a.user_id && r.status === 'used').length || 0;
+                  const goal = a.zone_type === 'vip' 
+                    ? (events?.find(e => e.id === selectedConsumoEventId)?.consumo_vip_requirement || 0)
+                    : (events?.find(e => e.id === selectedConsumoEventId)?.consumo_general_requirement || 0);
+                  const isQualified = goal > 0 && checkins >= goal;
+
+                  return (
+                    <div key={a.id} className={`flex items-center justify-between p-3 rounded-xl transition-all border ${isQualified ? 'bg-success/5 border-success/20' : 'bg-secondary/50 border-border/50'}`}>
+                      <div className="flex items-center gap-3">
+                        <div className={`w-1.5 h-8 rounded-full ${isQualified ? 'bg-success shadow-glow-success' : 'bg-muted'}`}></div>
+                        <div>
+                          <p className="text-sm font-bold text-foreground">{a.profile?.name}</p>
+                          <div className="flex items-center gap-2">
+                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type === 'vip' ? 'bg-warning/20 text-warning' : 'bg-primary/20 text-primary'}`}>
+                              {a.zone_type || 'General'}
+                            </span>
+                            {a.is_team_leader && <span className="text-[9px] font-black uppercase text-muted-foreground">TL</span>}
+                          </div>
+                        </div>
+                      </div>
+                      <div className="text-right">
+                        <p className={`text-lg font-black ${isQualified ? 'text-success' : 'text-foreground'}`}>{checkins} / {goal}</p>
+                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{isQualified ? 'Habilitado' : 'Pendiente'}</p>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+        </div>
+      )}
+
+      {tab === 'sales' && (
+        <div className="space-y-4">
+          {!selectedEventStatsId ? (
+            <div className="space-y-4">
+              <h3 className="font-bold text-lg text-foreground px-1">Gestión por Evento</h3>
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                {events?.map((ev) => (
+                  <button 
+                    key={ev.id} 
+                    onClick={() => setSelectedEventStatsId(ev.id)}
+                    className="glass-card p-4 text-left hover:border-primary/50 transition-all group"
+                  >
+                    <div className="flex justify-between items-start">
+                      <div>
+                        <h4 className="font-bold text-foreground group-hover:text-primary transition-colors">{ev.title}</h4>
+                        <p className="text-xs text-muted-foreground mt-1 flex items-center gap-1">
+                          <Calendar className="h-3 w-3" /> {ev.date}
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-black uppercase px-2 py-1 bg-primary/10 text-primary rounded-lg">Ver Detalles</span>
+                    </div>
+                  </button>
+                ))}
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-6">
+              <button 
+                onClick={() => setSelectedEventStatsId(null)} 
+                className="flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-primary transition-colors"
+              >
+                <ArrowLeft className="h-4 w-4" /> Volver a la lista
+              </button>
+              
+              <div className="flex flex-col gap-1">
+                <h3 className="text-xl font-black text-foreground">
+                  {events?.find(e => e.id === selectedEventStatsId)?.title}
+                </h3>
+                <p className="text-sm text-muted-foreground">Gestión y Estadísticas Detalladas</p>
+              </div>
+
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+                {/* Control de Acceso Box */}
+                <div className="glass-card overflow-hidden border-l-4 border-info">
+                  <div className="w-full p-5 text-left">
+                    <div className="flex items-center gap-3 mb-4">
+                      <div className="p-2 rounded-lg bg-info/10 text-info">
+                        <ScanLine className="h-5 w-5" />
+                      </div>
+                      <span className="text-sm font-bold text-muted-foreground uppercase">Control de Acceso</span>
+                    </div>
+                    
+                    <div className="grid grid-cols-2 gap-4">
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-black text-success uppercase tracking-wider">Ingresaron</p>
+                        <p className="text-2xl font-black text-foreground">
+                          {reservations?.filter(r => r.event_id === selectedEventStatsId && r.status === 'used').length || 0}
+                        </p>
+                      </div>
+                      <div className="space-y-1">
+                        <p className="text-[10px] font-black text-warning uppercase tracking-wider">No ingresaron</p>
+                        <p className="text-2xl font-black text-foreground">
+                          {reservations?.filter(r => r.event_id === selectedEventStatsId && r.status === 'active').length || 0}
+                        </p>
+                      </div>
+                    </div>
+                  </div>
+                </div>
+                {/* Free Pass Box */}
+                <div className="glass-card overflow-hidden border-l-4 border-success">
+                  <button 
+                    onClick={() => setExpandedCardId(expandedCardId === 'free' ? null : 'free')}
+                    className="w-full p-5 text-left transition-all hover:bg-success/5"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg bg-success/10 text-success">
+                        <UserPlus className="h-5 w-5" />
+                      </div>
+                      <span className="text-sm font-bold text-muted-foreground uppercase">Free Pass</span>
+                    </div>
+                    <div className="flex justify-between items-end">
+                      <p className="text-3xl font-black text-foreground">
+                        {reservations?.filter(r => r.event_id === selectedEventStatsId && r.type === 'rrpp_free').length || 0}
+                      </p>
+                      <span className="text-[10px] text-primary font-bold">{expandedCardId === 'free' ? 'Ocultar' : 'Ver lista'}</span>
+                    </div>
+                  </button>
+                  {expandedCardId === 'free' && (
+                    <div className="bg-secondary/30 border-t border-border p-3 animate-in fade-in slide-in-from-top-1">
+                      <div className="max-h-40 overflow-y-auto space-y-1">
+                        {reservations?.filter(r => r.event_id === selectedEventStatsId && r.type === 'rrpp_free').map(r => (
+                          <div key={r.id} className="flex justify-between text-[10px] p-1.5 bg-background rounded-lg">
+                            <span className="font-bold truncate">{r.guest_name || 'Sin nombre'}</span>
+                            <span className="text-muted-foreground italic shrink-0">Promotor: {r.rrpp?.name || 'Sistema'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+
+                {/* Ticket Types Boxes */}
+                {events?.find(e => e.id === selectedEventStatsId)?.ticket_types?.map(tt => (
+                  <div key={tt.id} className="glass-card overflow-hidden border-l-4 border-primary">
+                    <button 
+                      onClick={() => setExpandedCardId(expandedCardId === tt.id ? null : tt.id)}
+                      className="w-full p-5 text-left transition-all hover:bg-primary/5"
+                    >
+                      <div className="flex items-center gap-3 mb-3">
+                        <div className="p-2 rounded-lg bg-primary/10 text-primary">
+                          <Ticket className="h-5 w-5" />
+                        </div>
+                        <span className="text-sm font-bold text-muted-foreground uppercase truncate">{tt.name}</span>
+                      </div>
+                      <div className="flex justify-between items-end">
+                        <p className="text-3xl font-black text-foreground">
+                          {reservations?.filter(r => r.event_id === selectedEventStatsId && r.ticket_type_id === tt.id).length || 0}
+                        </p>
+                        <div className="text-right">
+                          <p className="text-xs font-bold text-primary">Bs. {tt.price * (reservations?.filter(r => r.event_id === selectedEventStatsId && r.ticket_type_id === tt.id).length || 0)}</p>
+                          <span className="text-[10px] text-primary font-bold">{expandedCardId === tt.id ? 'Ocultar' : 'Ver lista'}</span>
+                        </div>
+                      </div>
+                    </button>
+                    {expandedCardId === tt.id && (
+                      <div className="bg-secondary/30 border-t border-border p-3 animate-in fade-in slide-in-from-top-1">
+                        <div className="max-h-40 overflow-y-auto space-y-1">
+                          {reservations?.filter(r => r.event_id === selectedEventStatsId && r.ticket_type_id === tt.id).map(r => (
+                            <div key={r.id} className="flex justify-between text-[10px] p-1.5 bg-background rounded-lg">
+                              <span className="font-bold truncate">{r.guest_name || 'Comprador'}</span>
+                              <span className="text-muted-foreground italic shrink-0">Vendedor: {r.rrpp?.name || 'APP'}</span>
+                            </div>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ))}
+
+                {/* Mesas Box */}
+                <div className="glass-card overflow-hidden border-l-4 border-warning">
+                  <button 
+                    onClick={() => setExpandedCardId(expandedCardId === 'mesas' ? null : 'mesas')}
+                    className="w-full p-5 text-left transition-all hover:bg-warning/5"
+                  >
+                    <div className="flex items-center gap-3 mb-3">
+                      <div className="p-2 rounded-lg bg-warning/10 text-warning">
+                        <MapPin className="h-5 w-5" />
+                      </div>
+                      <span className="text-sm font-bold text-muted-foreground uppercase">Mesas</span>
+                    </div>
+                    <div className="flex justify-between items-end">
+                      <p className="text-3xl font-black text-foreground">
+                        {reservations?.filter(r => r.event_id === selectedEventStatsId && r.type === 'mesa_vip').length || 0}
+                      </p>
+                      <span className="text-[10px] text-primary font-bold">{expandedCardId === 'mesas' ? 'Ocultar' : 'Ver lista'}</span>
+                    </div>
+                  </button>
+                  {expandedCardId === 'mesas' && (
+                    <div className="bg-secondary/30 border-t border-border p-3 animate-in fade-in slide-in-from-top-1">
+                      <div className="max-h-40 overflow-y-auto space-y-1">
+                        {reservations?.filter(r => r.event_id === selectedEventStatsId && r.type === 'mesa_vip').map(r => (
+                          <div key={r.id} className="flex justify-between text-[10px] p-1.5 bg-background rounded-lg">
+                            <span className="font-bold truncate">{r.guest_name || 'Comprador'}</span>
+                            <span className="text-muted-foreground italic shrink-0">Vendedor: {r.rrpp?.name || 'APP'}</span>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* General Summary Box */}
+              <div className="glass-card p-6 bg-primary/5 border-primary/20">
+                <div className="flex justify-between items-center">
+                  <div>
+                    <p className="text-xs font-black text-primary uppercase tracking-wider">Recaudación Total</p>
+                    <p className="text-4xl font-black text-foreground mt-1">
+                      Bs. {reservations?.filter(r => r.event_id === selectedEventStatsId).reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0) || 0}
+                    </p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs font-bold text-muted-foreground">Total Entradas</p>
+                    <p className="text-2xl font-black text-foreground">
+                      {reservations?.filter(r => r.event_id === selectedEventStatsId).length || 0}
+                    </p>
+                  </div>
+                </div>
+              </div>
+            </div>
+          )}
         </div>
       )}
     </motion.div>

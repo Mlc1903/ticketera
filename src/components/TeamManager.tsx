@@ -30,6 +30,21 @@ export default function TeamManager({ organizationId }: Props) {
     enabled: !!organizationId && !!user?.id,
   });
 
+  const { data: myAssignment } = useQuery({
+    queryKey: ['my-rrpp-assignment', organizationId, user?.id],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('rrpp_assignments')
+        .select('zone_type')
+        .eq('organization_id', organizationId)
+        .eq('user_id', user?.id)
+        .maybeSingle();
+      if (error) throw error;
+      return data;
+    },
+    enabled: !!organizationId && !!user?.id,
+  });
+
   const handleAssignRRPP = async () => {
     if (!rrppEmail || !organizationId || !user) return;
     setAssigningRRPP(true);
@@ -67,6 +82,7 @@ export default function TeamManager({ organizationId }: Props) {
         organization_id: organizationId,
         is_team_leader: false, // Team Leaders can only create regular RRPPs
         created_by: user.id,
+        zone_type: myAssignment?.zone_type,
       });
 
       if (error) throw error;
@@ -130,6 +146,11 @@ export default function TeamManager({ organizationId }: Props) {
                   <p className="text-[10px] text-muted-foreground">{a.profile?.email}</p>
                 </div>
                 <div className="flex items-center gap-3">
+                  {a.zone_type && (
+                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type === 'vip' ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-primary/20 text-primary border border-primary/30'}`}>
+                      {a.zone_type}
+                    </span>
+                  )}
                   <span className="rounded-lg bg-primary/10 px-2 py-1 text-[10px] font-mono text-primary">{a.unique_code}</span>
                   <button onClick={() => handleDeleteRRPP(a.id)} className="text-muted-foreground hover:text-destructive transition-colors">
                     <Trash2 className="h-4 w-4" />

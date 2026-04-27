@@ -16,6 +16,7 @@ export type Database = {
     Tables: {
       events: {
         Row: {
+          allow_rrpp_guests: boolean
           capacity: number
           created_at: string
           created_by: string | null
@@ -23,13 +24,19 @@ export type Database = {
           description: string
           id: string
           image_url: string | null
+          is_free_pass: boolean
+          free_pass_until: string | null
           location: string
           organization_id: string | null
+          rrpp_guests_per_promoter: number
+          consumo_general_requirement: number
+          consumo_vip_requirement: number
           time: string
           title: string
           updated_at: string
         }
         Insert: {
+          allow_rrpp_guests?: boolean
           capacity?: number
           created_at?: string
           created_by?: string | null
@@ -37,13 +44,19 @@ export type Database = {
           description?: string
           id?: string
           image_url?: string | null
+          is_free_pass?: boolean
+          free_pass_until?: string | null
           location: string
           organization_id?: string | null
+          rrpp_guests_per_promoter?: number
+          consumo_general_requirement?: number
+          consumo_vip_requirement?: number
           time: string
           title: string
           updated_at?: string
         }
         Update: {
+          allow_rrpp_guests?: boolean
           capacity?: number
           created_at?: string
           created_by?: string | null
@@ -51,8 +64,13 @@ export type Database = {
           description?: string
           id?: string
           image_url?: string | null
+          is_free_pass?: boolean
+          free_pass_until?: string | null
           location?: string
           organization_id?: string | null
+          rrpp_guests_per_promoter?: number
+          consumo_general_requirement?: number
+          consumo_vip_requirement?: number
           time?: string
           title?: string
           updated_at?: string
@@ -225,27 +243,36 @@ export type Database = {
       rrpp_assignments: {
         Row: {
           created_at: string
+          created_by: string | null
           event_id: string | null
           id: string
+          is_team_leader: boolean | null
           organization_id: string | null
           unique_code: string
           user_id: string
+          zone_type: string | null
         }
         Insert: {
           created_at?: string
+          created_by?: string | null
           event_id?: string | null
           id?: string
+          is_team_leader?: boolean | null
           organization_id?: string | null
           unique_code: string
           user_id: string
+          zone_type?: string | null
         }
         Update: {
           created_at?: string
+          created_by?: string | null
           event_id?: string | null
           id?: string
+          is_team_leader?: boolean | null
           organization_id?: string | null
           unique_code?: string
           user_id?: string
+          zone_type?: string | null
         }
         Relationships: [
           {

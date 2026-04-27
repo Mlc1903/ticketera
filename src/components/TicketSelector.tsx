@@ -211,7 +211,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
              </div>
            ) : (
              <button onClick={() => setShowMap(true)} className="w-full rounded-xl bg-warning text-warning-foreground py-2 text-sm font-semibold transition-all hover:bg-warning/90">
-               Elegir Mesa en Croquis
+               Elegir Mesa
              </button>
            )}
 
@@ -219,7 +219,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
              <div className="fixed inset-0 z-50 bg-background/90 backdrop-blur-sm flex justify-center pb-20 items-center overflow-y-auto w-full">
                <div className="w-full max-w-2xl bg-card rounded-2xl shadow-xl border border-border p-4 mx-4">
                  <div className="flex justify-between items-center mb-4">
-                   <h3 className="font-bold">Croquis</h3>
+                   <h3 className="font-bold">Mesas</h3>
                    <button onClick={() => setShowMap(false)} className="text-muted-foreground hover:text-foreground text-sm font-semibold">Cerrar</button>
                  </div>
                  <InteractiveMapSelector 

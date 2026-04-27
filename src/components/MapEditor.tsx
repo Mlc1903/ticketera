@@ -75,7 +75,7 @@ export default function MapEditor({ imageUrl, initialTables = [], onSave, isSavi
   return (
     <div className="space-y-4">
       <div className="flex justify-between items-center">
-        <h3 className="font-semibold text-foreground">Editor de Croquis</h3>
+        <h3 className="font-semibold text-foreground">Editor de Mesas</h3>
         <button 
           onClick={() => onSave(tables)}
           disabled={isSaving}
@@ -158,7 +158,7 @@ export default function MapEditor({ imageUrl, initialTables = [], onSave, isSavi
             {/* The Image */}
             <img 
               src={imageUrl} 
-              alt="Croquis" 
+              alt="Mesas" 
               className="w-full h-auto cursor-crosshair pointer-events-auto block"
               onClick={handleImageClick}
               draggable={false}

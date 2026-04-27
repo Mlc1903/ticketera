@@ -1,4 +1,5 @@
 import { useState, useEffect } from 'react';
+import { useQuery } from '@tanstack/react-query';
 import { motion } from 'framer-motion';
 import { UserPlus, Share2, CheckCircle, Ticket, RotateCcw } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
@@ -25,6 +26,25 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
   const [selectedTable, setSelectedTable] = useState<{ id: string, zoneName: string, label: string } | null>(null);
   const { user } = useAuth();
   const { data: eventData } = useEvent(eventId);
+
+  const { data: usedGuestsCount = 0, refetch: refetchCount } = useQuery({
+    queryKey: ['used-guests-count', eventId, user?.id],
+    queryFn: async () => {
+      if (!user) return 0;
+      const { count, error } = await supabase
+        .from('reservations')
+        .select('*', { count: 'exact', head: true })
+        .eq('event_id', eventId)
+        .eq('rrpp_id', user.id)
+        .eq('type', 'rrpp_free');
+      if (error) throw error;
+      return count || 0;
+    },
+    enabled: !!user && !!eventId,
+  });
+
+  const guestLimit = eventData?.rrpp_guests_per_promoter || 0;
+  const isLimitReached = guestLimit > 0 && usedGuestsCount >= guestLimit;
 
   useEffect(() => {
     if (!allowGuests && guestType === 'rrpp_free') {
@@ -65,6 +85,7 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
 
       if (error) throw error;
       setGeneratedCode(code);
+      refetchCount();
       toast.success('Pase generado exitosamente');
     } catch (err: any) {
       toast.error(err.message || 'Error al generar pase');
@@ -108,6 +129,15 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
         Agregar Invitado
       </h3>
 
+      {guestLimit > 0 && (
+        <div className="flex items-center justify-between px-1">
+          <span className="text-[10px] font-bold text-muted-foreground uppercase">Cupo de Invitados</span>
+          <span className={`text-xs font-black ${isLimitReached ? 'text-destructive' : 'text-primary'}`}>
+            {usedGuestsCount} / {guestLimit}
+          </span>
+        </div>
+      )}
+
       {!generatedCode ? (
         <div className="space-y-4">
           <div className="grid grid-cols-1 gap-2">
@@ -136,11 +166,11 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
 
           <button
             onClick={handleAddGuest}
-            disabled={loading || !name.trim() || (guestType === 'mesa_vip' && !selectedTable)}
+            disabled={loading || !name.trim() || (guestType === 'mesa_vip' && !selectedTable) || (guestType === 'rrpp_free' && isLimitReached)}
             className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2"
           >
             <Ticket className="h-4 w-4" />
-            {loading ? 'Generando...' : 'Generar Pase'}
+            {loading ? 'Generando...' : isLimitReached && guestType === 'rrpp_free' ? 'Límite alcanzado' : 'Generar Pase'}
           </button>
         </div>
       ) : (

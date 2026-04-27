@@ -64,9 +64,24 @@ export default function RRPPDashboard() {
 
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 max-w-2xl mx-auto">
-      <div>
-        <div className="flex items-center gap-2 text-sm text-primary font-semibold mb-1"><Users className="h-4 w-4" />Panel RRPP</div>
-        <h1 className="text-2xl font-black text-foreground">Mi Panel</h1>
+      <div className="flex items-center justify-between">
+        <div>
+          <div className="flex items-center gap-2 text-sm text-primary font-semibold mb-1"><Users className="h-4 w-4" />Panel RRPP</div>
+          <h1 className="text-2xl font-black text-foreground">Mi Panel</h1>
+        </div>
+        {activeEvent && (
+          <div className="text-right">
+            {assignments?.find(a => a.organization_id === activeEvent.organization_id)?.zone_type && (
+              <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border ${
+                assignments.find(a => a.organization_id === activeEvent.organization_id)?.zone_type === 'vip' 
+                ? 'bg-warning/20 text-warning border-warning/30' 
+                : 'bg-primary/20 text-primary border-primary/30'
+              }`}>
+                Rango: {assignments.find(a => a.organization_id === activeEvent.organization_id)?.zone_type}
+              </span>
+            )}
+          </div>
+        )}
       </div>
 
       {assignedEvents.length > 1 && (
@@ -103,7 +118,7 @@ export default function RRPPDashboard() {
           </button>
           {visibleZones && visibleZones.length > 0 && (
             <button onClick={() => setRrppTab('maps')} className={`px-4 py-2 rounded-lg text-sm font-medium transition-all ${rrppTab === 'maps' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}>
-              Croquis
+              Mesas
             </button>
           )}
           {isTL && (

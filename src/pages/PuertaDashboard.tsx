@@ -1,5 +1,6 @@
 import { useState } from 'react';
-import { Ticket, Loader2, CheckCircle, CreditCard } from 'lucide-react';
+import { Ticket, Loader2, CheckCircle, CreditCard, Share2, RotateCcw } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 import { motion } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 import { useEvents } from '@/hooks/useSupabaseData';
@@ -12,6 +13,7 @@ export default function PuertaDashboard() {
   const { data: events, isLoading: eventsLoading } = useEvents(orgId);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [loading, setLoading] = useState(false);
+  const [generatedTicket, setGeneratedTicket] = useState<{ code: string, typeName: string, price: number } | null>(null);
 
   if (!orgId && userRole !== 'super_admin' && userRole !== 'puerta' && userRole !== 'admin') {
     return (
@@ -20,9 +22,7 @@ export default function PuertaDashboard() {
         <p className="text-muted-foreground">No tienes acceso a esta sección o no perteneces a ninguna organización.</p>
       </div>
     );
-  }
-
-  const handleSellTicket = async (ticketTypeId: string, ticketType: string, eventTitle: string, price: number) => {
+  }  const handleSellTicket = async (ticketTypeId: string, ticketType: string, ticketTypeName: string, eventTitle: string, price: number) => {
     if (!confirm(`¿Confirmas la venta en efectivo por Bs. ${price}?`)) return;
     setLoading(true);
     try {
@@ -45,7 +45,8 @@ export default function PuertaDashboard() {
 
       if (error) throw error;
       
-      toast.success(`¡Venta Registrada! (Código: ${code})`);
+      setGeneratedTicket({ code, typeName: ticketTypeName, price });
+      toast.success(`¡Venta Registrada!`);
     } catch (error: any) {
       toast.error(error.message || 'Error al procesar la venta');
     }
@@ -82,7 +83,7 @@ export default function PuertaDashboard() {
         )}
       </div>
 
-      {selectedEvent && (
+      {selectedEvent && !generatedTicket && (
         <div className="space-y-4">
           <h3 className="font-semibold text-foreground text-lg border-b border-border pb-2">Entradas Disponibles - {selectedEvent.title}</h3>
           
@@ -101,7 +102,7 @@ export default function PuertaDashboard() {
                   <div className="flex flex-col items-center gap-2">
                     <p className="text-xl font-black text-primary">Bs. {tt.price}</p>
                     <button 
-                      onClick={() => handleSellTicket(tt.id, tt.type, selectedEvent.title, tt.price)}
+                      onClick={() => handleSellTicket(tt.id, tt.type, tt.name, selectedEvent.title, tt.price)}
                       disabled={loading}
                       className="rounded-xl bg-primary px-6 py-2.5 text-sm font-bold text-primary-foreground hover:shadow-glow active:scale-[0.98] transition-all disabled:opacity-40 flex items-center justify-center gap-2 w-full sm:w-auto min-w-[140px]"
                     >
@@ -114,6 +115,53 @@ export default function PuertaDashboard() {
             </div>
           )}
         </div>
+      )}
+
+      {generatedTicket && (
+        <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-8 text-center space-y-6">
+          <div className="flex justify-center text-success">
+            <div className="bg-success/10 p-3 rounded-full">
+              <CheckCircle className="h-12 w-12" />
+            </div>
+          </div>
+          
+          <div>
+            <h2 className="text-2xl font-black text-foreground">¡Venta Exitosa!</h2>
+            <p className="text-muted-foreground">Muestra este código al cliente</p>
+          </div>
+
+          <div className="flex justify-center">
+            <div className="bg-white p-4 rounded-3xl shadow-xl">
+              <QRCodeSVG value={generatedTicket.code} size={200} />
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <p className="text-lg font-mono font-black text-primary tracking-widest">{generatedTicket.code}</p>
+            <div className="flex justify-center gap-4 text-xs font-bold uppercase tracking-wider text-muted-foreground">
+              <span>{generatedTicket.typeName}</span>
+              <span>Bs. {generatedTicket.price}</span>
+            </div>
+          </div>
+
+          <div className="pt-4 flex flex-col gap-3">
+            <button 
+              onClick={() => {
+                const text = encodeURIComponent(`🎟️ Tu entrada para *${selectedEvent?.title}*\n✨ Tipo: *${generatedTicket.typeName}*\n🎟️ Código: *${generatedTicket.code}*\n\n¡Te esperamos!`);
+                window.open(`https://wa.me/?text=${text}`);
+              }}
+              className="w-full rounded-xl bg-[#25D366] py-4 text-sm font-bold text-white hover:shadow-glow transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <Share2 className="h-4 w-4" /> Compartir por WhatsApp
+            </button>
+            <button 
+              onClick={() => setGeneratedTicket(null)}
+              className="w-full rounded-xl bg-secondary py-4 text-sm font-bold text-foreground hover:bg-secondary/80 transition-all active:scale-[0.98] flex items-center justify-center gap-2"
+            >
+              <RotateCcw className="h-4 w-4" /> Vender otra entrada
+            </button>
+          </div>
+        </motion.div>
       )}
     </motion.div>
   );

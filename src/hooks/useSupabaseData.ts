@@ -49,7 +49,7 @@ export function useReservations(filters?: { eventId?: string; rrppId?: string; u
   return useQuery({
     queryKey: ['reservations', filters],
     queryFn: async () => {
-      let query = supabase.from('reservations').select('*, ticket_types:ticket_type_id(name, type), events:event_id(title, date, time, location, image_url)');
+      let query = supabase.from('reservations').select('*, ticket_types:ticket_type_id(name, type, price), events:event_id(title, date, time, location, image_url), rrpp:rrpp_id(name)');
       if (filters?.eventId) query = query.eq('event_id', filters.eventId);
       if (filters?.rrppId) query = query.eq('rrpp_id', filters.rrppId);
       if (filters?.userId) query = query.eq('user_id', filters.userId);

@@ -19,7 +19,7 @@ export default function InteractiveMapSelector({ organizationId, eventId, select
   }
 
   if (!zones || zones.length === 0) {
-    return <div className="p-4 text-center text-sm text-muted-foreground bg-secondary rounded-xl">No hay croquis configurados.</div>;
+    return <div className="p-4 text-center text-sm text-muted-foreground bg-secondary rounded-xl">No hay mesas configuradas.</div>;
   }
 
   const activeZone = zones[activeZoneIdx];
