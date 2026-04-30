@@ -90,6 +90,17 @@ export default function SuperAdminDashboard() {
     setSaving(false);
   };
 
+  const handleToggleAutomatedFreePass = async (id: string, current: boolean) => {
+    try {
+      const { error } = await supabase.from('organizations').update({ automated_free_pass: !current }).eq('id', id);
+      if (error) throw error;
+      toast.success('Configuración actualizada');
+      queryClient.invalidateQueries({ queryKey: ['all-organizations'] });
+    } catch (err: any) {
+      toast.error(err.message);
+    }
+  };
+
   const handleAddOwner = async () => {
     if (!ownerEmail || !selectedOrgId) return;
     setAddingOwner(true);
@@ -302,11 +313,24 @@ export default function SuperAdminDashboard() {
             {orgs?.map((org: any) => (
               <div key={org.id} className="glass-card p-4">
                 <div className="flex items-center justify-between">
-                  <div>
+                  <div className="flex-1">
                     <p className="font-semibold text-foreground">{org.name}</p>
                     <p className="text-xs text-muted-foreground font-mono">{org.slug}</p>
+                    <div className="mt-2 flex items-center gap-4">
+                       <label className="flex items-center gap-2 cursor-pointer group">
+                         <div 
+                           onClick={() => handleToggleAutomatedFreePass(org.id, org.automated_free_pass)}
+                           className={`w-10 h-5 rounded-full p-1 transition-colors duration-200 ease-in-out ${org.automated_free_pass ? 'bg-primary' : 'bg-muted'}`}
+                         >
+                           <div className={`w-3 h-3 bg-white rounded-full transition-transform duration-200 ease-in-out ${org.automated_free_pass ? 'translate-x-5' : 'translate-x-0'}`} />
+                         </div>
+                         <span className="text-[10px] font-bold text-muted-foreground uppercase group-hover:text-primary transition-colors">Free Pass Automático</span>
+                       </label>
+                    </div>
                   </div>
-                  <span className="text-xs text-muted-foreground">{new Date(org.created_at).toLocaleDateString('es-BO')}</span>
+                  <div className="text-right">
+                    <span className="text-[10px] text-muted-foreground block">{new Date(org.created_at).toLocaleDateString('es-BO')}</span>
+                  </div>
                 </div>
               </div>
             ))}

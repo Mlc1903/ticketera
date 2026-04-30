@@ -7,7 +7,7 @@ import { Link } from 'react-router-dom';
 
 export default function MyTickets() {
   const { user } = useAuth();
-  const { data: reservations, isLoading } = useReservations({ userId: user?.id });
+  const { data: reservations, isLoading, error } = useReservations({ userId: user?.id });
 
   if (!user) {
     return (
@@ -20,7 +20,25 @@ export default function MyTickets() {
   }
 
   if (isLoading) {
-    return <div className="flex justify-center py-20"><Loader2 className="h-8 w-8 animate-spin text-primary" /></div>;
+    return (
+      <div className="flex flex-col items-center justify-center py-20 space-y-4">
+        <Loader2 className="h-8 w-8 animate-spin text-primary" />
+        <p className="text-sm text-muted-foreground animate-pulse">Cargando tus entradas...</p>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="text-center py-20 px-6 space-y-4">
+        <div className="bg-destructive/10 p-4 rounded-2xl inline-block text-destructive mb-2">
+          <Ticket className="h-8 w-8" />
+        </div>
+        <p className="text-foreground font-semibold">Error al cargar entradas</p>
+        <p className="text-sm text-muted-foreground">{(error as any).message || "Hubo un problema al conectar con el servidor."}</p>
+        <button onClick={() => window.location.reload()} className="text-primary hover:underline text-sm font-medium">Reintentar</button>
+      </div>
+    );
   }
 
   return (
@@ -83,7 +101,7 @@ export default function MyTickets() {
                     <div>
                       <h2 className="font-bold text-white text-xl uppercase leading-tight tracking-wide">{event?.title || 'Evento'}</h2>
                       <p className="text-gray-300 mt-1">{event?.location || 'Ubicación no especificada'}</p>
-                      <p className="text-gray-300">{r.quantity || 1} entrada(s) - <span className="font-medium text-white uppercase">{r.type?.replace('_', ' ')}</span></p>
+                      <p className="text-gray-300">{r.quantity || 1} entrada(s) - <span className="font-medium text-white uppercase">{r.ticket_types?.name || r.type?.replace('_', ' ')}</span></p>
                     </div>
                   </div>
 

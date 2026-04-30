@@ -26,9 +26,11 @@ export default function Layout({ children }: { children: React.ReactNode }) {
       <header className="sticky top-0 z-50 border-b border-border bg-background/80 backdrop-blur-xl">
         <div className="container flex h-14 items-center justify-between">
           <Link to="/" className="flex items-center gap-2">
-            <div className="flex h-8 w-8 items-center justify-center rounded-lg bg-primary">
-              <Ticket className="h-4 w-4 text-primary-foreground" />
-            </div>
+            <img 
+              src="https://res.cloudinary.com/dv8t8ym36/image/upload/f_auto,q_auto/NIGHTPASS_lkz1lb" 
+              alt="NightPass Logo" 
+              className="h-8 w-8 object-contain"
+            />
             <span className="text-lg font-bold text-foreground">NightPass</span>
           </Link>
 

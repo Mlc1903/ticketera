@@ -1,8 +1,11 @@
-import { useState } from 'react';
-import { motion, AnimatePresence } from 'framer-motion';
-import { ScanLine, CheckCircle, XCircle, Keyboard, Camera } from 'lucide-react';
-import { supabase } from '@/integrations/supabase/client';
 import { Scanner, IDetectedBarcode } from '@yudiel/react-qr-scanner';
+import { useAuth } from '@/hooks/useAuth';
+import { useScanners } from '@/hooks/useSupabaseData';
+import { Info, ScanLine, Camera, Keyboard, CheckCircle, XCircle } from 'lucide-react';
+import { useState } from 'react';
+import { supabase } from '@/integrations/supabase/client';
+import { motion, AnimatePresence } from 'framer-motion';
+import { toast } from 'sonner';
 
 type ScanResult = {
   status: 'SUCCESS' | 'ALREADY_USED' | 'ERROR' | 'EXPIRED';
@@ -16,15 +19,28 @@ export default function CheckInScanner() {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<ScanResult>(null);
   const [mode, setMode] = useState<'camera' | 'manual'>('camera');
+  const { activeOrg } = useAuth();
+  const { data: scanners } = useScanners(activeOrg?.id);
+  const [selectedScannerId, setSelectedScannerId] = useState<string>('');
 
   const handleValidate = async (overrideCode?: string) => {
     const codeToUse = overrideCode || code;
     if (!codeToUse.trim()) return;
+    
+    // If scanners exist, one must be selected
+    if (scanners && scanners.length > 0 && !selectedScannerId) {
+      toast.error('Por favor, selecciona un punto de acceso (escáner)');
+      return;
+    }
+
     setScanning(true);
     setResult(null);
 
     try {
-      const { data: rawData, error } = await supabase.rpc('validate_ticket' as any, { p_code: codeToUse.trim().toUpperCase() });
+      const { data: rawData, error } = await supabase.rpc('validate_ticket' as any, { 
+        p_code: codeToUse.trim().toUpperCase(),
+        p_scanner_id: selectedScannerId || null
+      });
       const data = rawData as any;
       if (error) throw error;
 
@@ -67,6 +83,35 @@ export default function CheckInScanner() {
 
   return (
     <div className="space-y-4">
+      {/* Scanner Selection */}
+      {scanners && scanners.length > 0 && (
+        <div className="glass-card p-4 space-y-3 border-primary/20">
+          <div className="flex items-center gap-2 text-xs font-bold text-primary uppercase">
+            <ScanLine className="h-4 w-4" /> Seleccionar Punto de Acceso
+          </div>
+          <select 
+            value={selectedScannerId}
+            onChange={(e) => setSelectedScannerId(e.target.value)}
+            className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary appearance-none cursor-pointer"
+          >
+            <option value="">-- Elige un acceso --</option>
+            {scanners.map((s: any) => (
+              <option key={s.id} value={s.id}>{s.name}</option>
+            ))}
+          </select>
+          {selectedScannerId && (
+            <div className="flex items-center gap-2 p-2 bg-primary/5 rounded-lg border border-primary/10">
+              <Info className="h-3.5 w-3.5 text-primary" />
+              <p className="text-[10px] text-muted-foreground">
+                Configurado para: <span className="font-bold text-primary">
+                  {scanners.find((s: any) => s.id === selectedScannerId)?.allowed_ticket_types?.join(', ') || 'Todos los tickets'}
+                </span>
+              </p>
+            </div>
+          )}
+        </div>
+      )}
+
       <div className="flex gap-2 bg-secondary p-1 rounded-xl w-max mx-auto md:mx-0">
         <button 
           onClick={() => setMode('camera')} 

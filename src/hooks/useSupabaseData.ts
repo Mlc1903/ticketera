@@ -4,7 +4,7 @@ import type { Tables } from '@/integrations/supabase/types';
 
 export type EventWithTickets = Tables<'events'> & {
   ticket_types: Tables<'ticket_types'>[];
-  organizations?: { name: string };
+  organizations?: { name: string, automated_free_pass: boolean };
   allow_rrpp_guests?: boolean;
   general_tables_count?: number;
   vip_tables_count?: number;
@@ -16,7 +16,7 @@ export function useEvents(organizationId?: string) {
     queryFn: async (): Promise<EventWithTickets[]> => {
       let query = supabase
         .from('events')
-        .select('*, ticket_types(*), organizations(name)')
+        .select('*, ticket_types(*), organizations(name, automated_free_pass)')
         .order('date', { ascending: true });
       if (organizationId) {
         query = query.eq('organization_id', organizationId);
@@ -35,7 +35,7 @@ export function useEvent(id: string | undefined) {
       if (!id) return null;
       const { data, error } = await supabase
         .from('events')
-        .select('*, ticket_types(*), organizations(name)')
+        .select('*, ticket_types(*), organizations(name, automated_free_pass)')
         .eq('id', id)
         .maybeSingle();
       if (error) throw error;
@@ -49,7 +49,12 @@ export function useReservations(filters?: { eventId?: string; rrppId?: string; u
   return useQuery({
     queryKey: ['reservations', filters],
     queryFn: async () => {
-      let query = supabase.from('reservations').select('*, ticket_types:ticket_type_id(name, type, price), events:event_id(title, date, time, location, image_url), rrpp:rrpp_id(name)');
+      let query = supabase.from('reservations').select(`
+        *,
+        ticket_types (name, type, price),
+        events (title, date, time, location, image_url),
+        rrpp:profiles!rrpp_id (name)
+      `);
       if (filters?.eventId) query = query.eq('event_id', filters.eventId);
       if (filters?.rrppId) query = query.eq('rrpp_id', filters.rrppId);
       if (filters?.userId) query = query.eq('user_id', filters.userId);
@@ -154,6 +159,7 @@ export interface OrganizationZone {
   organization_id: string;
   name: string;
   image_url: string;
+  category: 'general' | 'vip';
   tables_data: ZoneTable[];
 }
 
@@ -169,6 +175,23 @@ export function useZones(organizationId?: string) {
         .order('created_at', { ascending: true });
       if (error) throw error;
       return (data as any) || [];
+    },
+    enabled: !!organizationId,
+  });
+}
+
+export function useScanners(organizationId?: string) {
+  return useQuery({
+    queryKey: ['organization_scanners', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('organization_scanners')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
     },
     enabled: !!organizationId,
   });

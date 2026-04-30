@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable } from '@/hooks/useSupabaseData';
+import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable, useScanners } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
 import CheckInScanner from '@/components/CheckInScanner';
 import MapEditor from '@/components/MapEditor';
@@ -9,8 +9,9 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import EventMapStatus from '@/components/EventMapStatus';
+import { Info } from 'lucide-react';
 
-type Tab = 'overview' | 'checkin' | 'events' | 'zones' | 'rrpp' | 'sales' | 'consumo';
+type Tab = 'overview' | 'checkin' | 'events' | 'zones' | 'rrpp' | 'sales' | 'consumo' | 'scanners';
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -43,6 +44,7 @@ export default function AdminDashboard() {
   const [rrppZone, setRrppZone] = useState('');
   const [isTeamLeader, setIsTeamLeader] = useState(false);
   const [zoneVisibility, setZoneVisibility] = useState('all');
+  const [zoneCategory, setZoneCategory] = useState<'general' | 'vip'>('general');
   const [statusEventId, setStatusEventId] = useState<string | null>(null);
   const [statusMode, setStatusMode] = useState<'config' | 'status'>('config');
   const [selectedEventStatsId, setSelectedEventStatsId] = useState<string | null>(null);
@@ -53,6 +55,12 @@ export default function AdminDashboard() {
   const [showTicketForm, setShowTicketForm] = useState<string | null>(null);
   const [ticketForm, setTicketForm] = useState({ name: '', type: 'normal' as string, price: '', quantity: '' });
   const [savingTicket, setSavingTicket] = useState(false);
+
+  // Scanner form state
+  const [showScannerForm, setShowScannerForm] = useState(false);
+  const [scannerForm, setScannerForm] = useState({ name: '', allowed_types: [] as string[] });
+  const { data: scanners } = useScanners(orgId);
+  const [savingScanner, setSavingScanner] = useState(false);
 
   const totalTickets = reservations?.length || 0;
   const usedTickets = reservations?.filter((r: any) => r.status === 'used').length || 0;
@@ -66,6 +74,7 @@ export default function AdminDashboard() {
     { value: 'rrpp', label: 'RRPP', icon: Users },
     { value: 'sales', label: 'Gestión', icon: DollarSign },
     { value: 'consumo', label: 'Consumo', icon: Zap },
+    { value: 'scanners', label: 'Accesos', icon: ScanLine },
   ];
 
   // Fetch RRPP assignments
@@ -277,6 +286,7 @@ export default function AdminDashboard() {
         name: zoneName,
         image_url: publicUrlData.publicUrl,
         visibility: zoneVisibility,
+        category: zoneCategory,
         tables_data: [],
       });
       if (error) throw error;
@@ -300,6 +310,35 @@ export default function AdminDashboard() {
       setActiveZoneEditorId(null);
     }
     setSavingZoneLayout(false);
+  };
+
+  const handleSaveScanner = async () => {
+    if (!scannerForm.name || !orgId) return;
+    setSavingScanner(true);
+    try {
+      const { error } = await supabase.from('organization_scanners').insert({
+        organization_id: orgId,
+        name: scannerForm.name,
+        allowed_ticket_types: scannerForm.allowed_types.length > 0 ? scannerForm.allowed_types : null,
+      });
+      if (error) throw error;
+      toast.success('Escáner creado');
+      setScannerForm({ name: '', allowed_types: [] });
+      setShowScannerForm(false);
+      queryClient.invalidateQueries({ queryKey: ['organization_scanners'] });
+    } catch (err: any) {
+      toast.error('Error al crear escáner');
+    }
+    setSavingScanner(false);
+  };
+
+  const handleDeleteScanner = async (id: string) => {
+    if (!confirm('¿Eliminar este escáner?')) return;
+    const { error } = await supabase.from('organization_scanners').delete().eq('id', id);
+    if (!error) {
+      toast.success('Escáner eliminado');
+      queryClient.invalidateQueries({ queryKey: ['organization_scanners'] });
+    }
   };
 
   return (
@@ -548,10 +587,14 @@ export default function AdminDashboard() {
                   <input placeholder="Nombre" value={zoneName} onChange={(e) => setZoneName(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm" />
                   <input type="file" onChange={(e) => setZoneImageFile(e.target.files?.[0] || null)} className="w-full text-sm" />
                   <select value={zoneVisibility} onChange={(e) => setZoneVisibility(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm">
-                    <option value="all">Todos</option>
+                    <option value="all">Visibilidad: Todos</option>
                     <option value="rrpp_only">Solo RRPP</option>
                     <option value="rrpp_tl_only">Solo TLs</option>
                     <option value="admin_only">Solo Admin</option>
+                  </select>
+                  <select value={zoneCategory} onChange={(e) => setZoneCategory(e.target.value as 'general' | 'vip')} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm">
+                    <option value="general">Categoría: General</option>
+                    <option value="vip">Categoría: VIP</option>
                   </select>
                   <button onClick={handleCreateZone} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white">Guardar</button>
                 </div>
@@ -751,18 +794,29 @@ export default function AdminDashboard() {
                 <h3 className="text-xl font-black text-foreground">
                   {events?.find(e => e.id === selectedEventStatsId)?.title}
                 </h3>
-                <p className="text-sm text-muted-foreground">Gestión y Estadísticas Detalladas</p>
+                <p className="text-sm text-muted-foreground">Gestión y Estadísticas por Sector</p>
               </div>
 
-              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-4">
+              {/* Summary Stats Grid */}
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {/* Control de Acceso Box */}
                 <div className="glass-card overflow-hidden border-l-4 border-info">
                   <div className="w-full p-5 text-left">
-                    <div className="flex items-center gap-3 mb-4">
-                      <div className="p-2 rounded-lg bg-info/10 text-info">
-                        <ScanLine className="h-5 w-5" />
+                    <div className="flex items-center justify-between mb-4">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2 rounded-lg bg-info/10 text-info">
+                          <ScanLine className="h-5 w-5" />
+                        </div>
+                        <span className="text-sm font-bold text-muted-foreground uppercase">Control de Acceso</span>
                       </div>
-                      <span className="text-sm font-bold text-muted-foreground uppercase">Control de Acceso</span>
+                      {(scanners?.length || 0) > 1 && (
+                        <button 
+                          onClick={() => setExpandedCardId(expandedCardId === 'access' ? null : 'access')}
+                          className="text-[10px] font-bold text-primary hover:underline uppercase"
+                        >
+                          {expandedCardId === 'access' ? 'Ocultar' : 'Ver Detalle'}
+                        </button>
+                      )}
                     </div>
                     
                     <div className="grid grid-cols-2 gap-4">
@@ -780,133 +834,265 @@ export default function AdminDashboard() {
                       </div>
                     </div>
                   </div>
-                </div>
-                {/* Free Pass Box */}
-                <div className="glass-card overflow-hidden border-l-4 border-success">
-                  <button 
-                    onClick={() => setExpandedCardId(expandedCardId === 'free' ? null : 'free')}
-                    className="w-full p-5 text-left transition-all hover:bg-success/5"
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="p-2 rounded-lg bg-success/10 text-success">
-                        <UserPlus className="h-5 w-5" />
-                      </div>
-                      <span className="text-sm font-bold text-muted-foreground uppercase">Free Pass</span>
-                    </div>
-                    <div className="flex justify-between items-end">
-                      <p className="text-3xl font-black text-foreground">
-                        {reservations?.filter(r => r.event_id === selectedEventStatsId && r.type === 'rrpp_free').length || 0}
-                      </p>
-                      <span className="text-[10px] text-primary font-bold">{expandedCardId === 'free' ? 'Ocultar' : 'Ver lista'}</span>
-                    </div>
-                  </button>
-                  {expandedCardId === 'free' && (
+                  {expandedCardId === 'access' && (scanners?.length || 0) > 1 && (
                     <div className="bg-secondary/30 border-t border-border p-3 animate-in fade-in slide-in-from-top-1">
-                      <div className="max-h-40 overflow-y-auto space-y-1">
-                        {reservations?.filter(r => r.event_id === selectedEventStatsId && r.type === 'rrpp_free').map(r => (
-                          <div key={r.id} className="flex justify-between text-[10px] p-1.5 bg-background rounded-lg">
-                            <span className="font-bold truncate">{r.guest_name || 'Sin nombre'}</span>
-                            <span className="text-muted-foreground italic shrink-0">Promotor: {r.rrpp?.name || 'Sistema'}</span>
-                          </div>
-                        ))}
-                      </div>
-                    </div>
-                  )}
-                </div>
-
-                {/* Ticket Types Boxes */}
-                {events?.find(e => e.id === selectedEventStatsId)?.ticket_types?.map(tt => (
-                  <div key={tt.id} className="glass-card overflow-hidden border-l-4 border-primary">
-                    <button 
-                      onClick={() => setExpandedCardId(expandedCardId === tt.id ? null : tt.id)}
-                      className="w-full p-5 text-left transition-all hover:bg-primary/5"
-                    >
-                      <div className="flex items-center gap-3 mb-3">
-                        <div className="p-2 rounded-lg bg-primary/10 text-primary">
-                          <Ticket className="h-5 w-5" />
-                        </div>
-                        <span className="text-sm font-bold text-muted-foreground uppercase truncate">{tt.name}</span>
-                      </div>
-                      <div className="flex justify-between items-end">
-                        <p className="text-3xl font-black text-foreground">
-                          {reservations?.filter(r => r.event_id === selectedEventStatsId && r.ticket_type_id === tt.id).length || 0}
-                        </p>
-                        <div className="text-right">
-                          <p className="text-xs font-bold text-primary">Bs. {tt.price * (reservations?.filter(r => r.event_id === selectedEventStatsId && r.ticket_type_id === tt.id).length || 0)}</p>
-                          <span className="text-[10px] text-primary font-bold">{expandedCardId === tt.id ? 'Ocultar' : 'Ver lista'}</span>
-                        </div>
-                      </div>
-                    </button>
-                    {expandedCardId === tt.id && (
-                      <div className="bg-secondary/30 border-t border-border p-3 animate-in fade-in slide-in-from-top-1">
-                        <div className="max-h-40 overflow-y-auto space-y-1">
-                          {reservations?.filter(r => r.event_id === selectedEventStatsId && r.ticket_type_id === tt.id).map(r => (
-                            <div key={r.id} className="flex justify-between text-[10px] p-1.5 bg-background rounded-lg">
-                              <span className="font-bold truncate">{r.guest_name || 'Comprador'}</span>
-                              <span className="text-muted-foreground italic shrink-0">Vendedor: {r.rrpp?.name || 'APP'}</span>
+                      <div className="space-y-2">
+                        {scanners?.map(s => {
+                          const scannerUsed = reservations?.filter(r => r.event_id === selectedEventStatsId && r.status === 'used' && r.validated_by_scanner_id === s.id).length || 0;
+                          return (
+                            <div key={s.id} className="flex justify-between items-center p-2 bg-background rounded-lg border border-border/50">
+                              <span className="text-[11px] font-bold text-foreground">{s.name}</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black text-success">{scannerUsed}</span>
+                                <span className="text-[9px] text-muted-foreground">check-ins</span>
+                              </div>
                             </div>
-                          ))}
-                        </div>
-                      </div>
-                    )}
-                  </div>
-                ))}
-
-                {/* Mesas Box */}
-                <div className="glass-card overflow-hidden border-l-4 border-warning">
-                  <button 
-                    onClick={() => setExpandedCardId(expandedCardId === 'mesas' ? null : 'mesas')}
-                    className="w-full p-5 text-left transition-all hover:bg-warning/5"
-                  >
-                    <div className="flex items-center gap-3 mb-3">
-                      <div className="p-2 rounded-lg bg-warning/10 text-warning">
-                        <MapPin className="h-5 w-5" />
-                      </div>
-                      <span className="text-sm font-bold text-muted-foreground uppercase">Mesas</span>
-                    </div>
-                    <div className="flex justify-between items-end">
-                      <p className="text-3xl font-black text-foreground">
-                        {reservations?.filter(r => r.event_id === selectedEventStatsId && r.type === 'mesa_vip').length || 0}
-                      </p>
-                      <span className="text-[10px] text-primary font-bold">{expandedCardId === 'mesas' ? 'Ocultar' : 'Ver lista'}</span>
-                    </div>
-                  </button>
-                  {expandedCardId === 'mesas' && (
-                    <div className="bg-secondary/30 border-t border-border p-3 animate-in fade-in slide-in-from-top-1">
-                      <div className="max-h-40 overflow-y-auto space-y-1">
-                        {reservations?.filter(r => r.event_id === selectedEventStatsId && r.type === 'mesa_vip').map(r => (
-                          <div key={r.id} className="flex justify-between text-[10px] p-1.5 bg-background rounded-lg">
-                            <span className="font-bold truncate">{r.guest_name || 'Comprador'}</span>
-                            <span className="text-muted-foreground italic shrink-0">Vendedor: {r.rrpp?.name || 'APP'}</span>
-                          </div>
-                        ))}
+                          );
+                        })}
+                        {/* Sin especificar / Otros */}
+                        {(() => {
+                          const others = reservations?.filter(r => r.event_id === selectedEventStatsId && r.status === 'used' && !r.validated_by_scanner_id).length || 0;
+                          if (others > 0) return (
+                            <div className="flex justify-between items-center p-2 bg-background/50 rounded-lg border border-dashed border-border/50">
+                              <span className="text-[11px] font-medium text-muted-foreground italic">Otros / Manual</span>
+                              <div className="flex items-center gap-2">
+                                <span className="text-[10px] font-black text-success">{others}</span>
+                                <span className="text-[9px] text-muted-foreground">check-ins</span>
+                              </div>
+                            </div>
+                          );
+                          return null;
+                        })()}
                       </div>
                     </div>
                   )}
+                </div>
+
+                {/* Total Recaudación General Box */}
+                <div className="glass-card p-6 bg-primary/5 border-l-4 border-primary">
+                  <div className="flex justify-between items-center">
+                    <div>
+                      <p className="text-[10px] font-black text-primary uppercase tracking-wider">Recaudación Total</p>
+                      <p className="text-3xl font-black text-foreground mt-1">
+                        Bs. {reservations?.filter(r => r.event_id === selectedEventStatsId).reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0) || 0}
+                      </p>
+                    </div>
+                    <div className="text-right">
+                      <p className="text-[10px] font-bold text-muted-foreground uppercase">Total Tickets</p>
+                      <p className="text-xl font-black text-foreground">
+                        {reservations?.filter(r => r.event_id === selectedEventStatsId).length || 0}
+                      </p>
+                    </div>
+                  </div>
                 </div>
               </div>
 
-              {/* General Summary Box */}
-              <div className="glass-card p-6 bg-primary/5 border-primary/20">
-                <div className="flex justify-between items-center">
-                  <div>
-                    <p className="text-xs font-black text-primary uppercase tracking-wider">Recaudación Total</p>
-                    <p className="text-4xl font-black text-foreground mt-1">
-                      Bs. {reservations?.filter(r => r.event_id === selectedEventStatsId).reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0) || 0}
-                    </p>
+              {/* Categorized Sections */}
+              {(() => {
+                const eventRes = reservations?.filter(r => r.event_id === selectedEventStatsId) || [];
+                const eventAssignments = rrppAssignments?.filter(a => a.event_id === selectedEventStatsId) || [];
+                
+                const processData = (groupName: 'general' | 'vip') => {
+                  const filtered = eventRes.filter(r => {
+                    if (r.type === 'rrpp_free') return groupName === 'general';
+                    
+                    if (r.type === 'mesa_vip') {
+                      const zoneId = r.zone_table_id?.split(':')[0];
+                      const zone = zones?.find(z => z.id === zoneId);
+                      return (zone?.category || 'general') === groupName;
+                    }
+                    
+                    if (r.rrpp_id) {
+                      const assignment = eventAssignments.find(a => a.user_id === r.rrpp_id);
+                      if (assignment) return (assignment.zone_type || 'general') === groupName;
+                    }
+                    
+                    // Door / Direct
+                    return (r.ticket_types?.type === 'vip' ? 'vip' : 'general') === groupName;
+                  });
+
+                  const sources = {
+                    'Free Pass': filtered.filter(r => r.type === 'rrpp_free'),
+                    'Mesa': filtered.filter(r => r.type === 'mesa_vip'),
+                    'RRPP': filtered.filter(r => r.rrpp_id && r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && eventAssignments.some(a => a.user_id === r.rrpp_id)),
+                    'Puerta': filtered.filter(r => !r.rrpp_id || (r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && !eventAssignments.some(a => a.user_id === r.rrpp_id)))
+                  };
+
+                  return { filtered, sources };
+                };
+
+                const groups = [
+                  { name: 'general', label: 'Sector General', data: processData('general'), color: 'primary' },
+                  { name: 'vip', label: 'Sector VIP', data: processData('vip'), color: 'warning' }
+                ];
+
+                return (
+                  <div className="space-y-10">
+                    {groups.map(group => (
+                      <div key={group.name} className="space-y-4">
+                        <div className="flex items-center gap-3">
+                          <div className={`h-8 w-1.5 rounded-full bg-${group.color}`}></div>
+                          <h4 className="text-lg font-black text-foreground uppercase tracking-tight">{group.label}</h4>
+                          <span className="text-xs font-bold text-muted-foreground bg-secondary px-2 py-0.5 rounded-lg">
+                            {group.data.filtered.length} Entradas
+                          </span>
+                        </div>
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                          {Object.entries(group.data.sources).map(([source, resList]) => {
+                            if (group.name === 'vip' && source === 'Free Pass') return null; // No Free Pass in VIP usually
+                            
+                            const money = resList.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
+                            const cardId = `${group.name}-${source}`;
+                            const isExpanded = expandedCardId === cardId;
+
+                            return (
+                              <div key={source} className={`glass-card overflow-hidden border-t-2 ${resList.length > 0 ? `border-${group.color}` : 'border-border opacity-60'}`}>
+                                <button 
+                                  onClick={() => setExpandedCardId(isExpanded ? null : cardId)}
+                                  className="w-full p-4 text-left hover:bg-secondary/30 transition-all"
+                                >
+                                  <div className="flex justify-between items-start mb-2">
+                                    <span className="text-[10px] font-black text-muted-foreground uppercase tracking-widest">{source}</span>
+                                    {resList.length > 0 && <Info className="h-3 w-3 text-muted-foreground" />}
+                                  </div>
+                                  <div className="flex justify-between items-end">
+                                    <p className="text-2xl font-black text-foreground">{resList.length}</p>
+                                    <p className={`text-xs font-bold text-${group.color}`}>Bs. {money}</p>
+                                  </div>
+                                </button>
+                                
+                                {isExpanded && resList.length > 0 && (
+                                  <div className="bg-secondary/30 border-t border-border p-3 animate-in fade-in slide-in-from-top-1">
+                                    <div className="max-h-40 overflow-y-auto space-y-1">
+                                      {resList.map(r => (
+                                        <div key={r.id} className="flex flex-col p-2 bg-background rounded-lg border border-border/50 text-[10px]">
+                                          <div className="flex justify-between font-bold">
+                                            <span className="truncate">{r.guest_name || 'Comprador'}</span>
+                                            <span className="text-primary shrink-0">Bs. {r.ticket_types?.price || 0}</span>
+                                          </div>
+                                          <div className="flex justify-between text-muted-foreground mt-0.5">
+                                            <span>{r.ticket_types?.name}</span>
+                                            <span className="italic">{r.rrpp?.name || (r.rrpp_id ? 'Puerta' : 'Directo')}</span>
+                                          </div>
+                                        </div>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    ))}
                   </div>
-                  <div className="text-right">
-                    <p className="text-xs font-bold text-muted-foreground">Total Entradas</p>
-                    <p className="text-2xl font-black text-foreground">
-                      {reservations?.filter(r => r.event_id === selectedEventStatsId).length || 0}
-                    </p>
-                  </div>
+                );
+              })()}
+            </div>
+          )}
+        </div>
+      )}
+
+
+      {tab === 'scanners' && (
+        <div className="space-y-4">
+          <div className="flex justify-between items-center">
+            <h2 className="text-lg font-bold text-foreground">Gestión de Accesos (Escáneres)</h2>
+            <button 
+              onClick={() => setShowScannerForm(!showScannerForm)}
+              className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition-all"
+            >
+              <Plus className="h-4 w-4" /> Nuevo Escáner
+            </button>
+          </div>
+
+          {showScannerForm && (
+            <div className="glass-card p-5 space-y-4 border-2 border-primary/20 animate-in fade-in zoom-in-95 duration-200">
+              <div className="space-y-1">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Nombre del Punto de Acceso</label>
+                <input 
+                  placeholder="Ej: Puerta Principal, Entrada VIP" 
+                  value={scannerForm.name} 
+                  onChange={(e) => setScannerForm({ ...scannerForm, name: e.target.value })} 
+                  className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" 
+                />
+              </div>
+              <div className="space-y-2">
+                <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Restringir a tipos de entrada (Opcional)</label>
+                <div className="flex flex-wrap gap-2">
+                  {['normal', 'vip', 'mesa_vip', 'rrpp_free', 'rrpp_paid'].map(type => (
+                    <button
+                      key={type}
+                      onClick={() => {
+                        const types = scannerForm.allowed_types.includes(type)
+                          ? scannerForm.allowed_types.filter(t => t !== type)
+                          : [...scannerForm.allowed_types, type];
+                        setScannerForm({ ...scannerForm, allowed_types: types });
+                      }}
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
+                        scannerForm.allowed_types.includes(type) 
+                          ? 'bg-primary text-primary-foreground border-primary shadow-glow' 
+                          : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
+                      }`}
+                    >
+                      {type.replace('_', ' ')}
+                    </button>
+                  ))}
                 </div>
+                <p className="text-[10px] text-muted-foreground italic">Si no seleccionas ninguno, el escáner podrá validar todos los tipos.</p>
+              </div>
+              <div className="flex gap-3 pt-2">
+                <button onClick={() => setShowScannerForm(false)} className="flex-1 rounded-xl bg-secondary py-3 text-sm font-bold">Cancelar</button>
+                <button 
+                  onClick={handleSaveScanner} 
+                  disabled={savingScanner || !scannerForm.name}
+                  className="flex-[2] rounded-xl bg-primary py-3 text-sm font-bold text-white disabled:opacity-50"
+                >
+                  {savingScanner ? <Loader2 className="h-4 w-4 animate-spin mx-auto" /> : 'Guardar Escáner'}
+                </button>
               </div>
             </div>
           )}
+
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            {scanners?.map(s => (
+              <div key={s.id} className="glass-card p-4 flex justify-between items-start group">
+                <div className="space-y-1">
+                  <h3 className="font-bold text-foreground">{s.name}</h3>
+                  <div className="flex flex-wrap gap-1">
+                    {s.allowed_ticket_types && s.allowed_ticket_types.length > 0 ? (
+                      s.allowed_ticket_types.map((t: string) => (
+                        <span key={t} className="text-[8px] font-black bg-primary/10 text-primary px-1.5 py-0.5 rounded uppercase">
+                          {t.replace('_', ' ')}
+                        </span>
+                      ))
+                    ) : (
+                      <span className="text-[8px] font-black bg-success/10 text-success px-1.5 py-0.5 rounded uppercase">
+                        Todos los tipos
+                      </span>
+                    )}
+                  </div>
+                </div>
+                <button 
+                  onClick={() => handleDeleteScanner(s.id)}
+                  className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </button>
+              </div>
+            ))}
+            {scanners?.length === 0 && (
+              <div className="col-span-full py-10 text-center space-y-2 bg-secondary/20 rounded-2xl border border-dashed border-border">
+                <ScanLine className="h-8 w-8 text-muted-foreground mx-auto opacity-20" />
+                <p className="text-sm text-muted-foreground">No hay escáneres configurados.</p>
+                <p className="text-xs text-muted-foreground/60">Crea uno para empezar a trackear accesos específicos.</p>
+              </div>
+            )}
+          </div>
         </div>
       )}
     </motion.div>
   );
 }
+

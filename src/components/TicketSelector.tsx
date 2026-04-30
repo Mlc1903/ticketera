@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Minus, Plus, ShoppingCart, LogIn, Download, Info } from 'lucide-react';
+import { Minus, Plus, ShoppingCart, LogIn, Download, Info, CheckCircle } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { supabase } from '@/integrations/supabase/client';
 import { useAuth } from '@/hooks/useAuth';
@@ -27,6 +27,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   const [loading, setLoading] = useState(false);
   const [showMap, setShowMap] = useState(false);
   const [selectedTable, setSelectedTable] = useState<{ id: string, zoneName: string, label: string } | null>(null);
+  const [successMessage, setSuccessMessage] = useState<{ title: string, body: string } | null>(null);
   
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -47,6 +48,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
     if (!user) return;
     setLoading(true);
 
+    const isAutomatedFreePassActive = eventData?.organizations?.automated_free_pass;
     const typesToRequest = ticketTypes
       .filter(tt => quantities[tt.id] > 0)
       .map(tt => ({
@@ -63,6 +65,65 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
     }
 
     try {
+      // 1. Handle Automated Free Pass for Public Users
+      if (isAutomatedFreePassActive && !asRRPP) {
+        const freePassType = typesToRequest.find(t => t.type === 'rrpp_free');
+        if (freePassType) {
+          // Check if user already has a free pass for this event
+          const { count } = await supabase
+            .from('reservations')
+            .select('*', { count: 'exact', head: true })
+            .eq('event_id', eventId)
+            .eq('user_id', user.id)
+            .eq('type', 'rrpp_free');
+
+          if ((count || 0) > 0) {
+            toast.error("Ya tienes una entrada Free Pass para este evento.");
+            setLoading(false);
+            return;
+          }
+
+          if (freePassType.quantity > 1) {
+            toast.error("Solo puedes generar una entrada Free Pass por cuenta.");
+            setLoading(false);
+            return;
+          }
+
+          // Generate the free pass immediately
+          const { data: codeData } = await supabase.rpc('generate_ticket_code', { 
+            prefix: eventTitle.substring(0, 3).toUpperCase().replace(/\s/g, '') 
+          });
+          const code = codeData || `FREE-${Date.now()}`;
+
+          const { error: freeErr } = await supabase.from('reservations').insert({
+            code,
+            event_id: eventId,
+            ticket_type_id: freePassType.ticket_type_id,
+            user_id: user.id,
+            type: 'rrpp_free',
+            quantity: 1,
+            status: 'active'
+          });
+
+          if (freeErr) throw freeErr;
+          
+          // Remove from typesToRequest
+          const index = typesToRequest.findIndex(t => t.type === 'rrpp_free');
+          typesToRequest.splice(index, 1);
+          
+          if (typesToRequest.length === 0) {
+            setSuccessMessage({
+              title: "¡Free Pass Generado!",
+              body: "Tu entrada de cortesía ya está activa. Puedes encontrarla en la sección 'Mis Tickets'."
+            });
+            setPurchased(true);
+            setLoading(false);
+            return;
+          }
+        }
+      }
+
+      // 2. Normal Request flow for remaining tickets
       const { error } = await supabase.from('purchase_requests' as any).insert({
         event_id: eventId,
         user_id: user.id,
@@ -71,12 +132,16 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           ...tt,
           zone_table_id: tt.type === 'mesa_vip' && selectedTable ? selectedTable.id : null
         })),
-        total_amount: total
+        total_amount: typesToRequest.reduce((acc, t) => acc + (t.price * t.quantity), 0)
       });
 
       if (error) throw error;
+      
+      setSuccessMessage({
+        title: "¡Solicitud en Proceso!",
+        body: "Hemos recibido tu solicitud de pago. Una vez que validemos la transferencia, las entradas aparecerán en tu panel."
+      });
       setPurchased(true); 
-      setCodes([]); // we don't dispense code immediately 
       queryClient.invalidateQueries({ queryKey: ['events'] });
       toast.success(`Solicitud enviada correctamente`);
     } catch (err: any) {
@@ -88,17 +153,18 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   if (purchased) {
     return (
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-6 space-y-4 text-center">
-        <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-warning/20 text-warning mb-2">
-          <Info className="h-6 w-6" />
+        <div className="inline-flex h-12 w-12 items-center justify-center rounded-full bg-success/20 text-success mb-2">
+          <CheckCircle className="h-6 w-6" />
         </div>
-        <h3 className="text-xl font-bold text-foreground">¡Solicitud en Proceso!</h3>
-        <p className="text-sm text-muted-foreground mt-1">Hemos recibido tu solicitud de pago.</p>
-        <div className="rounded-xl bg-secondary/50 p-4 border border-border">
-           <p className="text-sm text-foreground mb-1">Tu solicitud está pendiente de verificación por un administrador.</p>
-           <p className="text-xs text-muted-foreground">Una vez que validemos la transferencia, las entradas aparecerán automáticamente en tu panel de "Mis Tickets".</p>
+        <h3 className="text-xl font-bold text-foreground">{successMessage?.title || '¡Listo!'}</h3>
+        <p className="text-sm text-muted-foreground mt-1">{successMessage?.body}</p>
+        <div className="pt-4">
+          <Link to="/mis-tickets" className="block w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-glow transition-all active:scale-[0.98]">
+            Ver mis Tickets
+          </Link>
         </div>
-        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setQuantities({}); }} className="w-full text-sm font-semibold text-primary hover:text-primary-hover transition-colors mt-4">
-          Volver al Inicio
+        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setQuantities({}); setSuccessMessage(null); }} className="w-full text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mt-2">
+          Volver al Evento
         </button>
       </motion.div>
     );
@@ -247,7 +313,14 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           </div>
           {user ? (
             <button
-              onClick={() => setShowPayment(true)}
+              onClick={() => {
+                const isAutomatedFreePassActive = eventData?.organizations?.automated_free_pass;
+                if (isAutomatedFreePassActive && !asRRPP && total === 0 && totalQty === 1) {
+                  handleRequestPurchase();
+                } else {
+                  setShowPayment(true);
+                }
+              }}
               disabled={loading || (ticketTypes.some(tt => tt.type === 'mesa_vip' && (quantities[tt.id] || 0) > 0) && !selectedTable)}
               className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40"
             >

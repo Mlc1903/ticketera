@@ -118,9 +118,11 @@ export default function Login() {
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="max-w-sm mx-auto py-12 space-y-8">
       <div className="text-center space-y-3">
-        <div className="inline-flex h-14 w-14 items-center justify-center rounded-2xl bg-primary">
-          <Ticket className="h-7 w-7 text-primary-foreground" />
-        </div>
+        <img 
+          src="https://res.cloudinary.com/dv8t8ym36/image/upload/f_auto,q_auto/NIGHTPASS_lkz1lb" 
+          alt="NightPass Logo" 
+          className="h-14 w-14 object-contain"
+        />
         <h1 className="text-2xl font-black text-foreground">
           {forgotPassword ? 'Recuperar Contraseña' : isSignUp ? 'Crear Cuenta' : 'Iniciar Sesión'}
         </h1>
