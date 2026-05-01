@@ -1,6 +1,6 @@
--- Fix: Free pass expiration should ONLY apply to client-generated free passes,
--- NOT to RRPP-generated passes or mesa tickets.
--- Also: RRPP passes should scan based on their RRPP's zone assignment.
+-- Fix: Ensure mesas scan correctly based on zone category,
+-- handle missing/legacy zone_table_ids safely,
+-- and return 'MESA VIP' to the scanner UI instead of 'Entrada Free Pass'.
 CREATE OR REPLACE FUNCTION public.validate_ticket(p_code TEXT, p_scanner_id UUID DEFAULT NULL)
 RETURNS JSONB
 LANGUAGE plpgsql
@@ -21,6 +21,7 @@ DECLARE
   v_rrpp_zone TEXT;
   v_is_allowed BOOLEAN;
   v_allowed_type TEXT;
+  v_display_ticket_name TEXT;
 BEGIN
   -- Get current time in local timezone (America/La_Paz)
   v_now := now() AT TIME ZONE 'America/La_Paz';
@@ -51,6 +52,8 @@ BEGIN
   FROM public.ticket_types t
   WHERE t.id = v_reservation.ticket_type_id;
 
+  v_display_ticket_name := COALESCE(v_ticket_type.name, coalesce(v_reservation.res_type::text, ''));
+
   -- Validate Scanner if provided
   IF p_scanner_id IS NOT NULL THEN
     SELECT * INTO v_scanner FROM public.organization_scanners WHERE id = p_scanner_id;
@@ -69,17 +72,25 @@ BEGIN
     
     -- If it's a mesa (table), check the zone category
     IF v_reservation.res_type = 'mesa_vip' THEN
+      v_zone_category := 'general'; -- Default to general
       IF v_reservation.zone_table_id IS NOT NULL THEN
-        SELECT category::text INTO v_zone_category 
-        FROM public.organization_zones 
-        WHERE id = split_part(v_reservation.zone_table_id, ':', 1)::uuid;
-        
-        IF v_zone_category = 'general' THEN
-          v_ticket_category_to_check := 'GENERAL';
-        ELSIF v_zone_category = 'vip' THEN
-          v_ticket_category_to_check := 'VIP';
-        END IF;
+        BEGIN
+          SELECT category::text INTO v_zone_category 
+          FROM public.organization_zones 
+          WHERE id = split_part(v_reservation.zone_table_id, ':', 1)::uuid;
+        EXCEPTION WHEN OTHERS THEN
+          v_zone_category := 'general';
+        END;
       END IF;
+      
+      IF COALESCE(v_zone_category, 'general') = 'general' THEN
+        v_ticket_category_to_check := 'GENERAL';
+        v_display_ticket_name := 'MESA - GENERAL';
+      ELSIF v_zone_category = 'vip' THEN
+        v_ticket_category_to_check := 'VIP';
+        v_display_ticket_name := 'MESA - VIP';
+      END IF;
+
     -- If it has an RRPP, check the RRPP's zone assignment
     ELSIF v_reservation.rrpp_id IS NOT NULL THEN
       BEGIN
@@ -90,8 +101,10 @@ BEGIN
         
         IF v_rrpp_zone = 'vip' THEN
           v_ticket_category_to_check := 'VIP';
+          IF v_reservation.res_type = 'rrpp_free' THEN v_display_ticket_name := 'Pase VIP (RRPP)'; END IF;
         ELSIF v_rrpp_zone = 'general' THEN
           v_ticket_category_to_check := 'GENERAL';
+          IF v_reservation.res_type = 'rrpp_free' THEN v_display_ticket_name := 'Pase General (RRPP)'; END IF;
         END IF;
       EXCEPTION WHEN OTHERS THEN
         -- fallback silently
@@ -113,16 +126,14 @@ BEGIN
         END IF;
         
         -- If scanner allows 'GENERAL', also allow 'NORMAL' and public 'RRPP_FREE' type tickets
-        -- (RRPP VIP tickets are already overridden to 'VIP' above, so they won't match this)
         IF upper(trim(v_allowed_type)) = 'GENERAL' AND v_ticket_category_to_check IN ('NORMAL', 'RRPP_FREE') THEN
           v_is_allowed := true;
           EXIT;
         END IF;
-        
       END LOOP;
 
       IF NOT v_is_allowed THEN
-        RETURN jsonb_build_object('status', 'ERROR', 'message', 'Entrada no permitida por este acceso (' || v_ticket_type.name || ')');
+        RETURN jsonb_build_object('status', 'ERROR', 'message', 'Entrada no permitida por este acceso (' || v_display_ticket_name || ')');
       END IF;
     END IF;
   END IF;
@@ -147,7 +158,7 @@ BEGIN
       'status', 'EXPIRED', 
       'message', 'Ticket vencido (Fuera de horario)',
       'guestName', COALESCE(v_reservation.guest_name, 'Cliente General'),
-      'ticketType', COALESCE(v_ticket_type.name, coalesce(v_reservation.res_type::text, ''))
+      'ticketType', v_display_ticket_name
     );
   END IF;
   
@@ -162,7 +173,7 @@ BEGIN
     'status', 'SUCCESS',
     'message', 'Acceso Permitido',
     'guestName', COALESCE(v_reservation.guest_name, 'Cliente General'),
-    'ticketType', COALESCE(v_ticket_type.name, coalesce(v_reservation.res_type::text, ''))
+    'ticketType', v_display_ticket_name
   );
 END;
 $$;

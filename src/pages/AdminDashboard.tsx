@@ -1137,7 +1137,13 @@ export default function AdminDashboard() {
                 
                 const processData = (groupName: 'general' | 'vip') => {
                   const filtered = eventRes.filter(r => {
-                    if (r.type === 'rrpp_free') return groupName === 'general';
+                    if (r.type === 'rrpp_free') {
+                      if (r.rrpp_id) {
+                        const assignment = eventAssignments.find(a => a.user_id === r.rrpp_id);
+                        if (assignment) return (assignment.zone_type || 'general') === groupName;
+                      }
+                      return groupName === 'general';
+                    }
                     
                     if (r.type === 'mesa_vip') {
                       const zoneId = r.zone_table_id?.split(':')[0];
@@ -1155,7 +1161,7 @@ export default function AdminDashboard() {
                   });
 
                   const sources = {
-                    'Admin': filtered.filter(r => r.rrpp_id && adminMemberIds.includes(r.rrpp_id)),
+                    'Admin': filtered.filter(r => r.rrpp_id && adminMemberIds.includes(r.rrpp_id) && r.type !== 'mesa_vip'),
                     'Free Pass': filtered.filter(r => r.type === 'rrpp_free'),
                     'Mesa': filtered.filter(r => r.type === 'mesa_vip'),
                     'RRPP': filtered.filter(r => r.rrpp_id && !adminMemberIds.includes(r.rrpp_id) && r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && eventAssignments.some(a => a.user_id === r.rrpp_id)),
@@ -1184,7 +1190,6 @@ export default function AdminDashboard() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                           {Object.entries(group.data.sources).map(([source, resList]) => {
-                            if (group.name === 'vip' && source === 'Free Pass') return null; // No Free Pass in VIP usually
                             
                             let money = 0;
                             if (source === 'Mesa') {
