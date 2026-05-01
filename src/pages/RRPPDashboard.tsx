@@ -87,7 +87,7 @@ export default function RRPPDashboard() {
       {assignedEvents.length > 1 && (
         <div className="flex gap-2 overflow-x-auto pb-1">
           {assignedEvents.map((ev: any, i: number) => (
-            <button key={ev.id} onClick={() => setActiveIdx(i)} className={`whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-medium transition-all touch-target ${activeIdx === i ? 'bg-primary text-primary-foreground shadow-glow' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>
+            <button key={ev.id} onClick={() => setActiveIdx(i)} className={`shrink-0 whitespace-nowrap rounded-xl px-4 py-2.5 text-sm font-medium transition-all touch-target ${activeIdx === i ? 'bg-primary text-primary-foreground shadow-glow' : 'bg-secondary text-muted-foreground hover:text-foreground'}`}>
               {ev.title} {ev.organizations?.name ? `- ${ev.organizations.name}` : ''}
             </button>
           ))}

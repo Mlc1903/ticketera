@@ -170,30 +170,27 @@ export default function SuperAdminDashboard() {
              .eq('status', 'pending')
              .maybeSingle();
 
-           const { data: codeData } = await supabase.rpc('generate_ticket_code', { 
-             prefix: req.events.title.substring(0, 3).toUpperCase() 
-           });
-           const code = codeData || `TKT-${Date.now()}`;
-
            if (existingPending) {
-             await supabase.from('reservations').update({
-               status: 'active',
-               code: code,
-               quantity: finalQtyForMesa,
-               user_id: req.user_id,
-               rrpp_id: req.rrpp_id
-             }).eq('id', existingPending.id);
-           } else {
+             await supabase.from('reservations').delete().eq('id', existingPending.id);
+           }
+
+           for (let i = 0; i < finalQtyForMesa; i++) {
+             const { data: codeData } = await supabase.rpc('generate_ticket_code', { 
+               prefix: req.events.title.substring(0, 3).toUpperCase() 
+             });
+             const code = codeData || `TKT-${Date.now()}-${i}`;
+
              await supabase.from('reservations').insert({
                code,
                event_id: req.event_id,
                ticket_type_id: tt.ticket_type_id,
                user_id: req.user_id,
                rrpp_id: req.rrpp_id,
-               guest_name: `Mesa - ${req.buyerProfile?.name || 'Cliente'}`,
+               guest_name: `Mesa - ${req.buyerProfile?.name || 'Cliente'} - ${i+1}/${finalQtyForMesa}`,
                type: 'mesa_vip',
-               quantity: finalQtyForMesa,
+               quantity: 1, // Individual ticket
                table_id: tt.zone_table_id,
+               zone_table_id: tt.zone_table_id,
                status: 'active'
              });
            }

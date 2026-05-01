@@ -473,6 +473,18 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleDeleteZone = async (id: string) => {
+    if (!confirm('¿Seguro que deseas eliminar este croquis? Se eliminarán todas las mesas vinculadas a él.')) return;
+    try {
+      const { error } = await supabase.from('organization_zones').delete().eq('id', id);
+      if (error) throw error;
+      toast.success('Croquis eliminado');
+      queryClient.invalidateQueries({ queryKey: ['organization_zones'] });
+    } catch (err: any) {
+      toast.error('Error al eliminar croquis');
+    }
+  };
+
   return (
     <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 max-w-4xl mx-auto">
       <div>
@@ -733,7 +745,16 @@ export default function AdminDashboard() {
               )}
               {zones?.map(zone => (
                 <div key={zone.id} className="glass-card p-4">
-                  <h3 className="font-bold">{zone.name}</h3>
+                  <div className="flex justify-between items-center mb-2">
+                    <h3 className="font-bold">{zone.name}</h3>
+                    <button 
+                      onClick={() => handleDeleteZone(zone.id)}
+                      className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                      title="Eliminar Croquis"
+                    >
+                      <Trash2 className="h-4 w-4" />
+                    </button>
+                  </div>
                   {activeZoneEditorId === zone.id ? (
                     <MapEditor imageUrl={zone.image_url} initialTables={zone.tables_data || []} onSave={(t) => handleSaveZoneLayout(zone.id, t)} />
                   ) : (
@@ -1150,7 +1171,20 @@ export default function AdminDashboard() {
                           {Object.entries(group.data.sources).map(([source, resList]) => {
                             if (group.name === 'vip' && source === 'Free Pass') return null; // No Free Pass in VIP usually
                             
-                            const money = resList.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
+                            let money = 0;
+                            if (source === 'Mesa') {
+                              const uniqueTableIds = new Set(resList.map(r => r.table_id || r.zone_table_id));
+                              money = Array.from(uniqueTableIds).reduce((acc, tableId) => {
+                                if (!tableId) return acc;
+                                const zoneId = tableId.split(':')[0];
+                                const zone = zones?.find(z => z.id === zoneId);
+                                const tableData = (zone?.tables_data as ZoneTable[] || []).find((t: any) => t.id === tableId);
+                                return acc + (tableData?.price || 0);
+                              }, 0);
+                            } else {
+                              money = resList.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
+                            }
+                            
                             const cardId = `${group.name}-${source}`;
                             const isExpanded = expandedCardId === cardId;
 
@@ -1178,7 +1212,9 @@ export default function AdminDashboard() {
                                         <div key={r.id} className="flex flex-col p-2 bg-background rounded-lg border border-border/50 text-[10px]">
                                           <div className="flex justify-between font-bold">
                                             <span className="truncate">{r.guest_name || 'Comprador'}</span>
-                                            <span className="text-primary shrink-0">Bs. {source === 'Admin' ? 0 : (r.ticket_types?.price || 0)}</span>
+                                            <span className="text-primary shrink-0">
+                                              {source === 'Mesa' ? '' : `Bs. ${source === 'Admin' ? 0 : (r.ticket_types?.price || 0)}`}
+                                            </span>
                                           </div>
                                           <div className="flex justify-between items-center text-muted-foreground mt-0.5">
                                             <div className="flex flex-col gap-0.5">
@@ -1427,7 +1463,7 @@ export default function AdminDashboard() {
                             {r.code}
                           </p>
                           <p className="text-[11px] text-white/50 font-bold uppercase tracking-widest">
-                            {r.ticket_types?.name || 'ENTRADA'}
+                            {r.type === 'mesa_vip' ? 'MESA' : (r.ticket_types?.name || 'ENTRADA')}
                           </p>
                         </div>
                       </div>

@@ -140,22 +140,7 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
 
       {!generatedCode ? (
         <div className="space-y-4">
-          <div className="grid grid-cols-1 gap-2">
-            {typeOptions.map((opt) => (
-              <button
-                key={opt.value}
-                onClick={() => setGuestType(opt.value)}
-                className={`rounded-xl p-2.5 text-center transition-all touch-target ${
-                  guestType === opt.value
-                    ? 'bg-primary/15 ring-1 ring-primary text-primary'
-                    : 'bg-secondary text-muted-foreground hover:text-foreground'
-                }`}
-              >
-                <p className="text-xs font-semibold">{opt.label}</p>
-                <p className="text-[10px] mt-0.5 opacity-70">{opt.desc}</p>
-              </button>
-            ))}
-          </div>
+
           <input
             type="text"
             placeholder="Nombre completo del invitado"
