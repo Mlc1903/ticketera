@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap } from 'lucide-react';
 import { motion } from 'framer-motion';
-import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable, useScanners } from '@/hooks/useSupabaseData';
+import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable, useScanners, useTicketCategories } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
 import CheckInScanner from '@/components/CheckInScanner';
 import MapEditor from '@/components/MapEditor';
@@ -60,6 +60,9 @@ export default function AdminDashboard() {
   const [showScannerForm, setShowScannerForm] = useState(false);
   const [scannerForm, setScannerForm] = useState({ name: '', allowed_types: [] as string[] });
   const { data: scanners } = useScanners(orgId);
+  const { data: ticketCategories } = useTicketCategories(orgId);
+  const [newCategoryName, setNewCategoryName] = useState('');
+  const [savingCategory, setSavingCategory] = useState(false);
   const [savingScanner, setSavingScanner] = useState(false);
 
   const totalTickets = reservations?.length || 0;
@@ -338,6 +341,31 @@ export default function AdminDashboard() {
     if (!error) {
       toast.success('Escáner eliminado');
       queryClient.invalidateQueries({ queryKey: ['organization_scanners'] });
+    }
+  };
+
+  const handleAddCategory = async () => {
+    if (!newCategoryName.trim() || !orgId) return;
+    setSavingCategory(true);
+    const { error } = await supabase.from('organization_ticket_categories').insert({
+      organization_id: orgId,
+      name: newCategoryName.trim().toUpperCase()
+    });
+    if (!error) {
+      toast.success('Categoría agregada');
+      setNewCategoryName('');
+      queryClient.invalidateQueries({ queryKey: ['ticket_categories'] });
+    } else {
+      toast.error('La categoría ya existe o hubo un error');
+    }
+    setSavingCategory(false);
+  };
+
+  const handleDeleteCategory = async (id: string) => {
+    const { error } = await supabase.from('organization_ticket_categories').delete().eq('id', id);
+    if (!error) {
+      toast.success('Categoría eliminada');
+      queryClient.invalidateQueries({ queryKey: ['ticket_categories'] });
     }
   };
 
@@ -1019,28 +1047,29 @@ export default function AdminDashboard() {
                 />
               </div>
               <div className="space-y-2">
-                <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Restringir a tipos de entrada (Opcional)</label>
+                <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Restringir a categorías de entrada</label>
                 <div className="flex flex-wrap gap-2">
-                  {['normal', 'vip', 'mesa_vip', 'rrpp_free', 'rrpp_paid'].map(type => (
+                  {ticketCategories?.map(cat => (
                     <button
-                      key={type}
+                      key={cat.id}
                       onClick={() => {
-                        const types = scannerForm.allowed_types.includes(type)
-                          ? scannerForm.allowed_types.filter(t => t !== type)
-                          : [...scannerForm.allowed_types, type];
+                        const types = scannerForm.allowed_types.includes(cat.name)
+                          ? scannerForm.allowed_types.filter(t => t !== cat.name)
+                          : [...scannerForm.allowed_types, cat.name];
                         setScannerForm({ ...scannerForm, allowed_types: types });
                       }}
                       className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
-                        scannerForm.allowed_types.includes(type) 
+                        scannerForm.allowed_types.includes(cat.name) 
                           ? 'bg-primary text-primary-foreground border-primary shadow-glow' 
                           : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
                       }`}
                     >
-                      {type.replace('_', ' ')}
+                      {cat.name}
                     </button>
                   ))}
+                  {ticketCategories?.length === 0 && <p className="text-xs text-muted-foreground italic">Primero crea categorías abajo.</p>}
                 </div>
-                <p className="text-[10px] text-muted-foreground italic">Si no seleccionas ninguno, el escáner podrá validar todos los tipos.</p>
+                <p className="text-[10px] text-muted-foreground italic">Si no eliges ninguna, el escáner validará todos los tipos.</p>
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowScannerForm(false)} className="flex-1 rounded-xl bg-secondary py-3 text-sm font-bold">Cancelar</button>
@@ -1089,6 +1118,38 @@ export default function AdminDashboard() {
                 <p className="text-xs text-muted-foreground/60">Crea uno para empezar a trackear accesos específicos.</p>
               </div>
             )}
+          </div>
+
+          {/* Master Categories Management */}
+          <div className="pt-6 border-t border-border/50">
+            <h3 className="text-sm font-bold text-foreground mb-4">Maestro de Categorías de Entrada</h3>
+            <div className="glass-card p-4 space-y-4">
+              <div className="flex gap-2">
+                <input 
+                  placeholder="Nueva categoría (ej: VIP GOLD)" 
+                  value={newCategoryName}
+                  onChange={(e) => setNewCategoryName(e.target.value)}
+                  className="flex-1 rounded-xl bg-secondary px-4 py-2 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary"
+                />
+                <button 
+                  onClick={handleAddCategory}
+                  disabled={savingCategory || !newCategoryName.trim()}
+                  className="rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-primary hover:bg-primary/10 disabled:opacity-50"
+                >
+                  {savingCategory ? <Loader2 className="h-4 w-4 animate-spin" /> : 'Añadir'}
+                </button>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {ticketCategories?.map(cat => (
+                  <div key={cat.id} className="flex items-center gap-1 bg-primary/5 border border-primary/10 rounded-lg pl-3 pr-1 py-1">
+                    <span className="text-[10px] font-bold text-primary uppercase">{cat.name}</span>
+                    <button onClick={() => handleDeleteCategory(cat.id)} className="p-1 text-muted-foreground hover:text-destructive">
+                      <Trash2 className="h-3 w-3" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
           </div>
         </div>
       )}

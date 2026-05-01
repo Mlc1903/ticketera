@@ -19,13 +19,14 @@ export default function CheckInScanner() {
   const [scanning, setScanning] = useState(false);
   const [result, setResult] = useState<ScanResult>(null);
   const [mode, setMode] = useState<'camera' | 'manual'>('camera');
+  const [cooldown, setCooldown] = useState(false);
   const { activeOrg } = useAuth();
   const { data: scanners } = useScanners(activeOrg?.id);
   const [selectedScannerId, setSelectedScannerId] = useState<string>('');
 
   const handleValidate = async (overrideCode?: string) => {
     const codeToUse = overrideCode || code;
-    if (!codeToUse.trim()) return;
+    if (cooldown) return;
     
     // If scanners exist, one must be selected
     if (scanners && scanners.length > 0 && !selectedScannerId) {
@@ -34,7 +35,8 @@ export default function CheckInScanner() {
     }
 
     setScanning(true);
-    setResult(null);
+    setResult(null); // Clear previous result immediately
+    setCooldown(true); // Start cooldown period
 
     try {
       const { data: rawData, error } = await supabase.rpc('validate_ticket' as any, { 
@@ -62,12 +64,12 @@ export default function CheckInScanner() {
     }
 
     setScanning(false);
+    
+    // After 3 seconds, allow another scan and clear the code
     setTimeout(() => {
+      setCooldown(false);
       setCode('');
-      // Limpiar resultado despues de corto tiempo si escanea automatico, o dejar para que el guardia vea?
-      // Es mejor dejar que el guardia vea el color en pantalla unos 3 segundos, pero setCode vacío permite
-      // escanear de una el siguiente ticket
-    }, 2000); 
+    }, 3000); 
   };
 
   const onScan = (detectedCodes: IDetectedBarcode[]) => {

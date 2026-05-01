@@ -144,6 +144,23 @@ export function useOrgMembers(organizationId?: string) {
   });
 }
 
+export function useTicketCategories(organizationId?: string) {
+  return useQuery({
+    queryKey: ['ticket_categories', organizationId],
+    queryFn: async () => {
+      if (!organizationId) return [];
+      const { data, error } = await supabase
+        .from('organization_ticket_categories')
+        .select('*')
+        .eq('organization_id', organizationId)
+        .order('name');
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!organizationId,
+  });
+}
+
 export interface ZoneTable {
   id: string;
   label: string;
