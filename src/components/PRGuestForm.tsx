@@ -9,21 +9,17 @@ import { useEvent } from '@/hooks/useSupabaseData';
 import InteractiveMapSelector from './InteractiveMapSelector';
 import { toast } from 'sonner';
 
-type GuestType = 'rrpp_free' | 'rrpp_paid' | 'mesa_vip';
-
 interface Props {
   eventId: string;
   eventTitle: string;
   allowGuests?: boolean;
+  rrppZoneType?: string; // 'general' | 'vip' | undefined
 }
 
-export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }: Props) {
+export default function PRGuestForm({ eventId, eventTitle, allowGuests = true, rrppZoneType }: Props) {
   const [name, setName] = useState('');
-  const [guestType, setGuestType] = useState<GuestType>('rrpp_free');
   const [loading, setLoading] = useState(false);
   const [generatedCode, setGeneratedCode] = useState<string | null>(null);
-  const [showMap, setShowMap] = useState(false);
-  const [selectedTable, setSelectedTable] = useState<{ id: string, zoneName: string, label: string } | null>(null);
   const { user } = useAuth();
   const { data: eventData } = useEvent(eventId);
 
@@ -43,14 +39,12 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
     enabled: !!user && !!eventId,
   });
 
-  const guestLimit = eventData?.rrpp_guests_per_promoter || 0;
+  // Use the correct guest limit based on RRPP zone
+  const isVipRrpp = rrppZoneType === 'vip';
+  const guestLimit = isVipRrpp 
+    ? ((eventData as any)?.rrpp_vip_guests_per_promoter || 0) 
+    : (eventData?.rrpp_guests_per_promoter || 0);
   const isLimitReached = guestLimit > 0 && usedGuestsCount >= guestLimit;
-
-  useEffect(() => {
-    if (!allowGuests && guestType === 'rrpp_free') {
-      setGuestType('mesa_vip');
-    }
-  }, [allowGuests, guestType]);
 
   const handleAddGuest = async () => {
     if (!name.trim() || !user) return;
@@ -62,25 +56,38 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
       });
       const code = codeData || `RRPP-${Date.now()}`;
 
-      // Get a ticket_type_id for this event
-      const { data: ticketTypes } = await supabase
+      // Find the correct ticket_type based on RRPP zone
+      const targetType = isVipRrpp ? 'vip' : 'normal';
+      let { data: ticketTypes } = await supabase
         .from('ticket_types')
-        .select('id')
-        .eq('event_id', eventId)
-        .limit(1);
+        .select('id, type, name')
+        .eq('event_id', eventId);
 
-      if (!ticketTypes?.length) throw new Error('No hay tipos de ticket');
+      // Try to find a ticket type matching the zone
+      let ticketType = ticketTypes?.find(t => t.type === targetType);
+      
+      // Fallback: try by name
+      if (!ticketType) {
+        ticketType = ticketTypes?.find(t => 
+          isVipRrpp 
+            ? t.name.toLowerCase().includes('vip') 
+            : (t.name.toLowerCase().includes('general') || t.type === 'normal')
+        );
+      }
+      
+      // Last fallback: just use first available
+      if (!ticketType) ticketType = ticketTypes?.[0];
+      if (!ticketType) throw new Error('No hay tipos de ticket');
 
       const { error } = await supabase.from('reservations').insert({
         code,
         event_id: eventId,
-        ticket_type_id: ticketTypes[0].id,
+        ticket_type_id: ticketType.id,
         rrpp_id: user.id,
         guest_name: name,
-        type: guestType,
+        type: 'rrpp_free', // Keep as rrpp_free for tracking, scanner uses RRPP zone
         quantity: 1,
         status: 'active',
-        zone_table_id: guestType === 'mesa_vip' && selectedTable ? selectedTable.id : null,
       });
 
       if (error) throw error;
@@ -94,7 +101,7 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
   };
 
   const shareToWhatsApp = () => {
-    const typeLabel = guestType === 'rrpp_free' ? 'VIP Gratis' : 'Mesa VIP';
+    const typeLabel = isVipRrpp ? 'VIP' : 'General';
     const text = encodeURIComponent(
       `🎉 ¡Hola ${name}! Tienes un pase *${typeLabel}* para *${eventTitle}*\n🎟️ Código: *${generatedCode}*\n\nPresenta este código en la entrada. ¡Nos vemos!`
     );
@@ -102,16 +109,6 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
   };
 
   const reset = () => { setGeneratedCode(null); setName(''); };
-
-  const typeOptions: { value: GuestType; label: string; desc: string }[] = allowGuests ? [
-    { 
-      value: 'rrpp_free', 
-      label: 'VIP Gratis', 
-      desc: eventData?.free_pass_until 
-        ? `Válido hasta ${eventData.free_pass_until.substring(0, 5)}` 
-        : 'Invitación gratuita' 
-    }
-  ] : [];
 
   if (!allowGuests) {
     return (
@@ -127,6 +124,15 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
       <h3 className="text-base font-semibold text-foreground flex items-center gap-2">
         <UserPlus className="h-4 w-4 text-primary" />
         Agregar Invitado
+        {rrppZoneType && (
+          <span className={`text-[9px] font-black uppercase px-2 py-0.5 rounded-lg border ml-auto ${
+            isVipRrpp 
+              ? 'bg-warning/20 text-warning border-warning/30' 
+              : 'bg-primary/20 text-primary border-primary/30'
+          }`}>
+            {isVipRrpp ? 'VIP' : 'GENERAL'}
+          </span>
+        )}
       </h3>
 
       {guestLimit > 0 && (
@@ -151,11 +157,11 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true }:
 
           <button
             onClick={handleAddGuest}
-            disabled={loading || !name.trim() || (guestType === 'mesa_vip' && !selectedTable) || (guestType === 'rrpp_free' && isLimitReached)}
+            disabled={loading || !name.trim() || isLimitReached}
             className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2"
           >
             <Ticket className="h-4 w-4" />
-            {loading ? 'Generando...' : isLimitReached && guestType === 'rrpp_free' ? 'Límite alcanzado' : 'Generar Pase'}
+            {loading ? 'Generando...' : isLimitReached ? 'Límite alcanzado' : 'Generar Pase'}
           </button>
         </div>
       ) : (

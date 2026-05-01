@@ -26,7 +26,7 @@ export default function AdminDashboard() {
 
   // Event form state
   const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' });
+  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [savingEvent, setSavingEvent] = useState(false);
   const [editEventId, setEditEventId] = useState<string | null>(null);
@@ -160,6 +160,7 @@ export default function AdminDashboard() {
           free_pass_until: eventForm.is_free_pass && eventForm.free_pass_until ? eventForm.free_pass_until : null,
           allow_rrpp_guests: eventForm.allow_rrpp_guests,
           rrpp_guests_per_promoter: parseInt(eventForm.rrpp_guests_per_promoter as string) || 0,
+          rrpp_vip_guests_per_promoter: parseInt(eventForm.rrpp_vip_guests_per_promoter as string) || 0,
           consumo_general_requirement: parseInt(eventForm.consumo_general_requirement as string) || 0,
           consumo_vip_requirement: parseInt(eventForm.consumo_vip_requirement as string) || 0,
           ...(uploadedImageUrl ? { image_url: uploadedImageUrl } : {}),
@@ -181,6 +182,7 @@ export default function AdminDashboard() {
           free_pass_until: eventForm.is_free_pass && eventForm.free_pass_until ? eventForm.free_pass_until : null,
           allow_rrpp_guests: eventForm.allow_rrpp_guests,
           rrpp_guests_per_promoter: parseInt(eventForm.rrpp_guests_per_promoter as string) || 0,
+          rrpp_vip_guests_per_promoter: parseInt(eventForm.rrpp_vip_guests_per_promoter as string) || 0,
           consumo_general_requirement: parseInt(eventForm.consumo_general_requirement as string) || 0,
           consumo_vip_requirement: parseInt(eventForm.consumo_vip_requirement as string) || 0,
           image_url: uploadedImageUrl,
@@ -197,7 +199,7 @@ export default function AdminDashboard() {
         }
         toast.success('Evento creado');
       }
-      setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' });
+      setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' });
       setImageFile(null);
       setShowEventForm(false);
       setEditEventId(null);
@@ -541,7 +543,7 @@ export default function AdminDashboard() {
 
       {tab === 'events' && (
         <div className="space-y-4">
-          <button onClick={() => { setEditEventId(null); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' }); setShowEventForm(!showEventForm); }} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all">
+          <button onClick={() => { setEditEventId(null); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' }); setShowEventForm(!showEventForm); }} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all">
             <Plus className="h-4 w-4" /> {showEventForm ? 'Cerrar Formulario' : 'Crear Evento'}
           </button>
 
@@ -610,15 +612,27 @@ export default function AdminDashboard() {
                     </div>
                   </label>
                   {eventForm.allow_rrpp_guests && (
-                    <div className="flex items-center gap-2 animate-in slide-in-from-right-2 duration-300">
-                      <input 
-                        type="number" 
-                        placeholder="Límite" 
-                        value={eventForm.rrpp_guests_per_promoter} 
-                        onChange={(e) => setEventForm({ ...eventForm, rrpp_guests_per_promoter: e.target.value })} 
-                        className="w-16 rounded-lg bg-background px-2 py-1.5 text-xs border border-primary/30 outline-none focus:ring-2 focus:ring-primary/20 text-foreground text-center" 
-                      />
-                      <span className="text-[9px] font-black text-primary uppercase">Por RRPP</span>
+                    <div className="flex items-center gap-4 animate-in slide-in-from-right-2 duration-300">
+                      <div className="flex items-center gap-1.5">
+                        <input 
+                          type="number" 
+                          placeholder="Límite" 
+                          value={eventForm.rrpp_guests_per_promoter} 
+                          onChange={(e) => setEventForm({ ...eventForm, rrpp_guests_per_promoter: e.target.value })} 
+                          className="w-14 rounded-lg bg-background px-2 py-1.5 text-xs border border-primary/30 outline-none focus:ring-2 focus:ring-primary/20 text-foreground text-center" 
+                        />
+                        <span className="text-[9px] font-black text-primary uppercase">General</span>
+                      </div>
+                      <div className="flex items-center gap-1.5">
+                        <input 
+                          type="number" 
+                          placeholder="Límite" 
+                          value={eventForm.rrpp_vip_guests_per_promoter} 
+                          onChange={(e) => setEventForm({ ...eventForm, rrpp_vip_guests_per_promoter: e.target.value })} 
+                          className="w-14 rounded-lg bg-background px-2 py-1.5 text-xs border border-warning/30 outline-none focus:ring-2 focus:ring-warning/20 text-foreground text-center" 
+                        />
+                        <span className="text-[9px] font-black text-warning uppercase">VIP</span>
+                      </div>
                     </div>
                   )}
                 </div>
@@ -676,6 +690,7 @@ export default function AdminDashboard() {
                         general_tables_count: '', 
                         vip_tables_count: '', 
                         rrpp_guests_per_promoter: ev.rrpp_guests_per_promoter?.toString() || '', 
+                        rrpp_vip_guests_per_promoter: (ev as any).rrpp_vip_guests_per_promoter?.toString() || '', 
                         consumo_general_requirement: ev.consumo_general_requirement?.toString() || '', 
                         consumo_vip_requirement: ev.consumo_vip_requirement?.toString() || '' 
                       } as any); 

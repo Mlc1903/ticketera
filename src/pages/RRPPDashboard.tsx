@@ -129,7 +129,7 @@ export default function RRPPDashboard() {
         </div>
       )}
 
-      {activeEvent && rrppTab === 'guest' && <PRGuestForm eventId={activeEvent.id} eventTitle={activeEvent.title} allowGuests={activeEvent.allow_rrpp_guests} />}
+      {activeEvent && rrppTab === 'guest' && <PRGuestForm eventId={activeEvent.id} eventTitle={activeEvent.title} allowGuests={activeEvent.allow_rrpp_guests} rrppZoneType={assignments?.find(a => a.organization_id === activeEvent.organization_id)?.zone_type} />}
       {activeEvent && rrppTab === 'sell' && <TicketSelector eventId={activeEvent.id} eventTitle={activeEvent.title} ticketTypes={activeEvent.ticket_types || []} asRRPP={true} />}
       {activeEvent && rrppTab === 'team' && isTL && <TeamManager organizationId={activeEvent.organization_id!} />}
       {activeEvent && rrppTab === 'maps' && visibleZones && (
