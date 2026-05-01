@@ -33,16 +33,20 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   const queryClient = useQueryClient();
   const { data: eventData } = useEvent(eventId);
 
-  const updateQty = (id: string, delta: number) => {
+  const updateQty = (id: string, type: string, delta: number) => {
     setQuantities((prev) => {
       const current = prev[id] || 0;
-      const next = Math.max(0, Math.min(10, current + delta));
+      const maxAllowed = type === 'rrpp_free' ? 1 : 10;
+      const next = Math.max(0, Math.min(maxAllowed, current + delta));
       return { ...prev, [id]: next };
     });
   };
 
   const total = ticketTypes.reduce((sum, tt) => sum + (quantities[tt.id] || 0) * tt.price, 0);
   const totalQty = Object.values(quantities).reduce((s, q) => s + q, 0);
+
+  const hasFreePass = ticketTypes.some(tt => tt.type === 'rrpp_free' && (quantities[tt.id] || 0) > 0);
+  const hasPaidTicket = ticketTypes.some(tt => tt.type !== 'rrpp_free' && (quantities[tt.id] || 0) > 0);
 
   const handleRequestPurchase = async () => {
     if (!user) return;
@@ -230,8 +234,9 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           const available = tt.quantity - tt.sold;
           const qty = quantities[tt.id] || 0;
           const soldOut = available <= 0;
+          const isConflictDisabled = (tt.type !== 'rrpp_free' && hasFreePass) || (tt.type === 'rrpp_free' && hasPaidTicket);
           return (
-            <div key={tt.id} className={`flex items-center justify-between rounded-xl bg-secondary p-3 ${soldOut ? 'opacity-50' : ''}`}>
+            <div key={tt.id} className={`flex items-center justify-between rounded-xl bg-secondary p-3 ${(soldOut || isConflictDisabled) ? 'opacity-50' : ''}`}>
               <div>
                 <p className="font-medium text-foreground text-sm">{tt.name}</p>
                 <p className="text-xs text-muted-foreground">Bs. {tt.price} · {available} disponibles</p>
@@ -245,11 +250,11 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
                 <span className="text-xs font-medium text-destructive">Agotado</span>
               ) : (
                 <div className="flex items-center gap-2">
-                  <button onClick={() => updateQty(tt.id, -1)} disabled={qty === 0} className="touch-target flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground disabled:opacity-30 transition-colors hover:bg-card-hover">
+                  <button onClick={() => updateQty(tt.id, tt.type, -1)} disabled={qty === 0} className="touch-target flex h-8 w-8 items-center justify-center rounded-lg bg-muted text-foreground disabled:opacity-30 transition-colors hover:bg-card-hover">
                     <Minus className="h-4 w-4" />
                   </button>
                   <span className="w-6 text-center text-sm font-semibold text-foreground">{qty}</span>
-                  <button onClick={() => updateQty(tt.id, 1)} disabled={qty >= available} className="touch-target flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-30 transition-colors">
+                  <button onClick={() => updateQty(tt.id, tt.type, 1)} disabled={qty >= available || (tt.type === 'rrpp_free' && qty >= 1) || isConflictDisabled} className="touch-target flex h-8 w-8 items-center justify-center rounded-lg bg-primary text-primary-foreground disabled:opacity-30 transition-colors">
                     <Plus className="h-4 w-4" />
                   </button>
                 </div>

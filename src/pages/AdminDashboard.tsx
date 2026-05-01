@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap } from 'lucide-react';
+import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap, QrCode, X, Share2 } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable, useScanners, useTicketCategories } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
@@ -10,6 +10,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import EventMapStatus from '@/components/EventMapStatus';
 import { Info } from 'lucide-react';
+import { QRCodeSVG } from 'qrcode.react';
 
 type Tab = 'overview' | 'checkin' | 'events' | 'zones' | 'rrpp' | 'sales' | 'consumo' | 'scanners';
 
@@ -64,10 +65,18 @@ export default function AdminDashboard() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [savingCategory, setSavingCategory] = useState(false);
   const [savingScanner, setSavingScanner] = useState(false);
+  const [bulkGenForm, setBulkGenForm] = useState({ eventId: '', guestName: '', quantity: '1' });
+  const [generatingBulk, setGeneratingBulk] = useState(false);
+  const [viewingQR, setViewingQR] = useState<{code: string, name: string} | null>(null);
+  const [bulkGeneratedTickets, setBulkGeneratedTickets] = useState<any[] | null>(null);
+  const [sharingTickets, setSharingTickets] = useState(false);
 
   const totalTickets = reservations?.length || 0;
   const usedTickets = reservations?.filter((r: any) => r.status === 'used').length || 0;
   const activeTickets = reservations?.filter((r: any) => r.status === 'active').length || 0;
+
+  const adminMemberIds = orgMembers?.filter(m => m.role === 'admin' || m.role === 'owner').map(m => m.user_id) || [];
+  if (userRole === 'super_admin' && user?.id) adminMemberIds.push(user.id);
 
   const tabs: { value: Tab; label: string; icon: React.ElementType }[] = [
     { value: 'overview', label: 'Resumen', icon: BarChart3 },
@@ -342,6 +351,101 @@ export default function AdminDashboard() {
       toast.success('Escáner eliminado');
       queryClient.invalidateQueries({ queryKey: ['organization_scanners'] });
     }
+  };
+
+  const handleBulkGenerate = async (category: 'general' | 'vip') => {
+    if (!bulkGenForm.eventId || !orgId) {
+      toast.error('Selecciona un evento primero');
+      return;
+    }
+    const qty = parseInt(bulkGenForm.quantity) || 1;
+    if (qty <= 0) return;
+
+    setGeneratingBulk(true);
+    try {
+      const event = events?.find(e => e.id === bulkGenForm.eventId);
+      const ticketType = event?.ticket_types?.find(t => 
+        category === 'vip' 
+          ? (t.type === 'vip' || t.name.toLowerCase().includes('vip'))
+          : (t.type === 'normal' || t.name.toLowerCase().includes('general'))
+      );
+
+      if (!ticketType) {
+        toast.error(`No se encontró un tipo de entrada ${category} en este evento`);
+        setGeneratingBulk(false);
+        return;
+      }
+
+      const reservations = [];
+      for (let i = 0; i < qty; i++) {
+        const { data: code } = await supabase.rpc('generate_ticket_code', { prefix: category.toUpperCase() });
+        reservations.push({
+          code: code || `${category.toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+          event_id: bulkGenForm.eventId,
+          ticket_type_id: ticketType.id,
+          guest_name: bulkGenForm.guestName || `Invitado ${category.toUpperCase()}`,
+          type: 'normal',
+          status: 'active',
+          quantity: 1,
+          rrpp_id: user?.id
+        });
+      }
+
+      const { data, error } = await supabase.from('reservations').insert(reservations).select('*, ticket_types(name)');
+      if (error) throw error;
+
+      toast.success(`${qty} entradas ${category.toUpperCase()} generadas con éxito`);
+      setBulkGenForm({ ...bulkGenForm, guestName: '', quantity: '1' });
+      setBulkGeneratedTickets(data);
+      queryClient.invalidateQueries({ queryKey: ['reservations'] });
+    } catch (err: any) {
+      toast.error('Error al generar entradas: ' + err.message);
+    }
+    setGeneratingBulk(false);
+  };
+
+  const handleShareTickets = async () => {
+    setSharingTickets(true);
+    try {
+      const nodes = document.querySelectorAll('.export-ticket-card');
+      const files: File[] = [];
+
+      const { toBlob } = await import('html-to-image');
+
+      for (let i = 0; i < nodes.length; i++) {
+        const node = nodes[i] as HTMLElement;
+        const blob = await toBlob(node, { quality: 0.95 });
+        if (blob) {
+          files.push(new File([blob], `entrada-${i + 1}.png`, { type: 'image/png' }));
+        }
+      }
+
+      if (navigator.canShare && navigator.canShare({ files })) {
+        await navigator.share({
+          files,
+          title: 'Entradas',
+          text: 'Aquí tienes tus entradas generadas',
+        });
+        toast.success('Compartido con éxito');
+      } else {
+        files.forEach(file => {
+          const url = URL.createObjectURL(file);
+          const a = document.createElement('a');
+          a.href = url;
+          a.download = file.name;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          URL.revokeObjectURL(url);
+        });
+        toast.success('Imágenes descargadas. Ya puedes enviarlas por WhatsApp.');
+      }
+    } catch (error: any) {
+      if (error.name !== 'AbortError') {
+        toast.error('Error al generar imágenes: ' + error.message);
+      }
+    }
+    setSharingTickets(false);
   };
 
   const handleAddCategory = async () => {
@@ -789,6 +893,81 @@ export default function AdminDashboard() {
           {!selectedEventStatsId ? (
             <div className="space-y-4">
               <h3 className="font-bold text-lg text-foreground px-1">Gestión por Evento</h3>
+              
+              {/* Quick Bulk Generation (Standalone) */}
+              <div className="glass-card p-6 border-2 border-primary/10 shadow-glow-sm bg-primary/5">
+                <div className="flex items-center gap-3 mb-6">
+                  <div className="p-2 bg-primary/10 rounded-xl">
+                    <Zap className="h-5 w-5 text-primary" />
+                  </div>
+                  <div>
+                    <h3 className="text-lg font-bold text-foreground">Generación Express de Entradas</h3>
+                    <p className="text-xs text-muted-foreground">Crea entradas instantáneas para venta en puerta o invitados</p>
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Evento</label>
+                    <select 
+                      value={bulkGenForm.eventId} 
+                      onChange={(e) => setBulkGenForm({ ...bulkGenForm, eventId: e.target.value })}
+                      className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary appearance-none cursor-pointer"
+                    >
+                      <option value="">-- Seleccionar Evento --</option>
+                      {events?.map(e => (
+                        <option key={e.id} value={e.id}>{e.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Nombre (Opcional)</label>
+                    <input 
+                      placeholder="Ej: Invitado" 
+                      value={bulkGenForm.guestName}
+                      onChange={(e) => setBulkGenForm({ ...bulkGenForm, guestName: e.target.value })}
+                      className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary"
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Cantidad</label>
+                    <input 
+                      type="number" 
+                      min="1"
+                      max="50"
+                      value={bulkGenForm.quantity}
+                      onChange={(e) => setBulkGenForm({ ...bulkGenForm, quantity: e.target.value })}
+                      className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary text-center font-bold"
+                    />
+                  </div>
+                </div>
+
+                <div className="grid grid-cols-2 gap-4">
+                  <button
+                    onClick={() => handleBulkGenerate('general')}
+                    disabled={generatingBulk || !bulkGenForm.eventId}
+                    className="group relative overflow-hidden rounded-2xl bg-secondary py-4 transition-all hover:bg-primary active:scale-95 disabled:opacity-50"
+                  >
+                    <div className="relative z-10 flex flex-col items-center gap-1">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground group-hover:text-primary-foreground/70">Sector</span>
+                      <span className="text-lg font-black text-foreground group-hover:text-primary-foreground">GENERAL</span>
+                    </div>
+                  </button>
+
+                  <button
+                    onClick={() => handleBulkGenerate('vip')}
+                    disabled={generatingBulk || !bulkGenForm.eventId}
+                    className="group relative overflow-hidden rounded-2xl bg-secondary py-4 transition-all hover:bg-warning active:scale-95 disabled:opacity-50"
+                  >
+                    <div className="relative z-10 flex flex-col items-center gap-1">
+                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground group-hover:text-warning-foreground/70">Sector</span>
+                      <span className="text-lg font-black text-foreground group-hover:text-warning-foreground">VIP</span>
+                    </div>
+                  </button>
+                </div>
+                {generatingBulk && <div className="text-center text-xs text-primary mt-2 animate-pulse">Generando...</div>}
+              </div>
+
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {events?.map((ev) => (
                   <button 
@@ -902,7 +1081,7 @@ export default function AdminDashboard() {
                     <div>
                       <p className="text-[10px] font-black text-primary uppercase tracking-wider">Recaudación Total</p>
                       <p className="text-3xl font-black text-foreground mt-1">
-                        Bs. {reservations?.filter(r => r.event_id === selectedEventStatsId).reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0) || 0}
+                        Bs. {reservations?.filter(r => r.event_id === selectedEventStatsId && (!r.rrpp_id || !adminMemberIds.includes(r.rrpp_id))).reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0) || 0}
                       </p>
                     </div>
                     <div className="text-right">
@@ -940,10 +1119,11 @@ export default function AdminDashboard() {
                   });
 
                   const sources = {
+                    'Admin': filtered.filter(r => r.rrpp_id && adminMemberIds.includes(r.rrpp_id)),
                     'Free Pass': filtered.filter(r => r.type === 'rrpp_free'),
                     'Mesa': filtered.filter(r => r.type === 'mesa_vip'),
-                    'RRPP': filtered.filter(r => r.rrpp_id && r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && eventAssignments.some(a => a.user_id === r.rrpp_id)),
-                    'Puerta': filtered.filter(r => !r.rrpp_id || (r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && !eventAssignments.some(a => a.user_id === r.rrpp_id)))
+                    'RRPP': filtered.filter(r => r.rrpp_id && !adminMemberIds.includes(r.rrpp_id) && r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && eventAssignments.some(a => a.user_id === r.rrpp_id)),
+                    'Puerta': filtered.filter(r => !r.rrpp_id || (!adminMemberIds.includes(r.rrpp_id) && r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && !eventAssignments.some(a => a.user_id === r.rrpp_id)))
                   };
 
                   return { filtered, sources };
@@ -986,7 +1166,8 @@ export default function AdminDashboard() {
                                   </div>
                                   <div className="flex justify-between items-end">
                                     <p className="text-2xl font-black text-foreground">{resList.length}</p>
-                                    <p className={`text-xs font-bold text-${group.color}`}>Bs. {money}</p>
+                                    {source !== 'Admin' && <p className={`text-xs font-bold text-${group.color}`}>Bs. {money}</p>}
+                                    {source === 'Admin' && <p className="text-[10px] font-bold text-muted-foreground uppercase">Sin Costo</p>}
                                   </div>
                                 </button>
                                 
@@ -997,11 +1178,22 @@ export default function AdminDashboard() {
                                         <div key={r.id} className="flex flex-col p-2 bg-background rounded-lg border border-border/50 text-[10px]">
                                           <div className="flex justify-between font-bold">
                                             <span className="truncate">{r.guest_name || 'Comprador'}</span>
-                                            <span className="text-primary shrink-0">Bs. {r.ticket_types?.price || 0}</span>
+                                            <span className="text-primary shrink-0">Bs. {source === 'Admin' ? 0 : (r.ticket_types?.price || 0)}</span>
                                           </div>
-                                          <div className="flex justify-between text-muted-foreground mt-0.5">
-                                            <span>{r.ticket_types?.name}</span>
-                                            <span className="italic">{r.rrpp?.name || (r.rrpp_id ? 'Puerta' : 'Directo')}</span>
+                                          <div className="flex justify-between items-center text-muted-foreground mt-0.5">
+                                            <div className="flex flex-col gap-0.5">
+                                              <span>{r.ticket_types?.name}</span>
+                                              <span className="font-mono text-[9px] text-primary bg-primary/10 px-1 py-0.5 rounded w-max">{r.code}</span>
+                                            </div>
+                                            <div className="flex flex-col items-end gap-1">
+                                              <span className="italic">{r.rrpp?.name || (r.rrpp_id ? 'Puerta' : 'Directo')}</span>
+                                              <button 
+                                                onClick={() => setViewingQR({ code: r.code, name: r.guest_name || 'Comprador' })}
+                                                className="flex items-center gap-1 text-[9px] font-bold text-primary hover:underline bg-primary/10 px-1.5 py-0.5 rounded-md"
+                                              >
+                                                <QrCode className="h-3 w-3" /> Ver QR
+                                              </button>
+                                            </div>
                                           </div>
                                         </div>
                                       ))}
@@ -1153,6 +1345,120 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+      {/* QR Code Modal */}
+      {viewingQR && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="glass-card w-full max-w-sm overflow-hidden border-2 border-primary/20 shadow-glow animate-in zoom-in-95 duration-200 relative">
+            <button 
+              onClick={() => setViewingQR(null)}
+              className="absolute top-4 right-4 p-2 bg-secondary/80 rounded-full text-muted-foreground hover:text-foreground z-10"
+            >
+              <X className="h-4 w-4" />
+            </button>
+            <div className="p-8 flex flex-col items-center justify-center text-center space-y-6">
+              <h3 className="text-xl font-black text-foreground">{viewingQR.name}</h3>
+              <div className="p-4 bg-white rounded-2xl shadow-xl w-64 h-64 flex items-center justify-center mx-auto">
+                <QRCodeSVG
+                  value={viewingQR.code}
+                  size={220}
+                  level="H"
+                  includeMargin={false}
+                  className="w-full h-full"
+                />
+              </div>
+              <p className="font-mono text-xl tracking-[0.2em] font-black text-primary bg-primary/10 px-4 py-2 rounded-xl">
+                {viewingQR.code}
+              </p>
+            </div>
+            <div className="p-4 bg-secondary/50 flex justify-center">
+              <button 
+                onClick={() => setViewingQR(null)}
+                className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-glow"
+              >
+                Cerrar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Instant QR Generation Modal */}
+      {bulkGeneratedTickets && bulkGeneratedTickets.length > 0 && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
+          <div className="glass-card w-full max-w-4xl max-h-[90vh] overflow-hidden flex flex-col border-2 border-primary/20 shadow-glow animate-in zoom-in-95 duration-200 relative">
+            <div className="p-6 border-b border-border flex items-center justify-between bg-secondary/50">
+              <div className="flex items-center gap-3">
+                <CheckCircle className="h-6 w-6 text-success" />
+                <h3 className="text-xl font-black text-foreground">¡{bulkGeneratedTickets.length} Entradas Generadas!</h3>
+              </div>
+              <button 
+                onClick={() => setBulkGeneratedTickets(null)}
+                className="p-2 bg-background rounded-full text-muted-foreground hover:text-foreground"
+              >
+                <X className="h-4 w-4" />
+              </button>
+            </div>
+            
+            <div className="p-6 overflow-y-auto flex-1">
+              <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
+                {bulkGeneratedTickets.map(r => {
+                  const generatedEvent = events?.find(e => e.id === bulkGenForm.eventId);
+                  const eventImageUrl = generatedEvent?.image_url || 'https://images.unsplash.com/photo-1514525253161-7a46d19cd819?q=80&w=2000&auto=format&fit=crop';
+                  return (
+                    <div key={r.id} className="export-ticket-card relative overflow-hidden rounded-2xl shadow-xl w-full max-w-sm mx-auto aspect-[3/4] flex flex-col justify-end group bg-black">
+                      {/* Background Image */}
+                      <img src={eventImageUrl} alt="Event Background" crossOrigin="anonymous" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
+                      {/* Gradient Overlay */}
+                      <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
+                      
+                      {/* Content */}
+                      <div className="relative z-10 p-6 flex flex-col items-center justify-end h-full space-y-5">
+                        <div className="text-center w-full">
+                          <h4 className="text-xl font-black text-white leading-tight drop-shadow-md">{generatedEvent?.title || 'EVENTO'}</h4>
+                          <p className="text-sm font-bold text-primary mt-1">{r.guest_name}</p>
+                        </div>
+                        
+                        <div className="p-3 bg-white rounded-2xl shadow-[0_0_30px_rgba(255,255,255,0.15)] w-44 h-44 flex items-center justify-center">
+                          <QRCodeSVG value={r.code} size={150} level="H" includeMargin={false} className="w-full h-full" />
+                        </div>
+                        
+                        <div className="w-full text-center space-y-1.5 pt-2">
+                          <p className="font-mono text-sm tracking-[0.3em] font-black text-white/90 bg-white/10 py-2 rounded-xl backdrop-blur-md">
+                            {r.code}
+                          </p>
+                          <p className="text-[11px] text-white/50 font-bold uppercase tracking-widest">
+                            {r.ticket_types?.name || 'ENTRADA'}
+                          </p>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+            
+            <div className="p-4 border-t border-border bg-secondary/50 flex justify-end">
+              <div className="flex gap-3 w-full sm:w-auto">
+                <button 
+                  onClick={handleShareTickets}
+                  disabled={sharingTickets}
+                  className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 rounded-xl bg-success py-3 text-sm font-bold text-success-foreground shadow-glow hover:bg-success/90 transition-all disabled:opacity-50"
+                >
+                  {sharingTickets ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
+                  {sharingTickets ? 'Generando...' : 'Compartir / Descargar QRs'}
+                </button>
+                <button 
+                  onClick={() => setBulkGeneratedTickets(null)}
+                  className="px-6 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-glow hover:bg-primary/90 transition-all"
+                >
+                  Cerrar
+                </button>
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
+
     </motion.div>
   );
 }
