@@ -72,15 +72,28 @@ BEGIN
     
     -- If it's a mesa (table), check the zone category
     IF v_reservation.res_type = 'mesa_vip' THEN
-      v_zone_category := 'general'; -- Default to general
+      v_zone_category := NULL;
       IF v_reservation.zone_table_id IS NOT NULL THEN
         BEGIN
+          -- Try to match by zone ID (if format is zone_id:table_id)
           SELECT category::text INTO v_zone_category 
           FROM public.organization_zones 
           WHERE id = split_part(v_reservation.zone_table_id, ':', 1)::uuid;
         EXCEPTION WHEN OTHERS THEN
-          v_zone_category := 'general';
+          v_zone_category := NULL;
         END;
+
+        -- If not found or invalid UUID, try searching within the tables_data JSONB array (legacy format)
+        IF v_zone_category IS NULL THEN
+          BEGIN
+            SELECT category::text INTO v_zone_category 
+            FROM public.organization_zones 
+            WHERE tables_data @> ('[{"id":"' || split_part(v_reservation.zone_table_id, ':', 1) || '"}]')::jsonb
+            LIMIT 1;
+          EXCEPTION WHEN OTHERS THEN
+            v_zone_category := NULL;
+          END;
+        END IF;
       END IF;
       
       IF COALESCE(v_zone_category, 'general') = 'general' THEN
