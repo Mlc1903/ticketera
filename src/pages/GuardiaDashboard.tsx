@@ -4,9 +4,9 @@ import { useAuth } from '@/hooks/useAuth';
 import CheckInScanner from '@/components/CheckInScanner';
 
 export default function GuardiaDashboard() {
-  const { activeOrg, userRole } = useAuth();
+  const { activeOrg, hasRole } = useAuth();
   
-  if (!activeOrg && userRole !== 'super_admin' && userRole !== 'guardia' && userRole !== 'admin') {
+  if (!activeOrg && !hasRole('super_admin') && !hasRole('guardia') && !hasRole('admin')) {
     return (
       <div className="text-center py-20 space-y-3">
         <Shield className="h-12 w-12 text-muted-foreground mx-auto" />

@@ -7,18 +7,18 @@ import { useAuth } from '@/hooks/useAuth';
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user, userRole, userOrgs, activeOrg, setActiveOrg, signOut } = useAuth();
+  const { user, userRole, hasRole, userOrgs, activeOrg, setActiveOrg, signOut } = useAuth();
 
   const isOrgAdmin = activeOrg && (activeOrg.role === 'owner' || activeOrg.role === 'admin');
 
   const navItems = [
     { path: '/', label: 'Eventos', icon: Calendar, show: true },
     { path: '/mis-tickets', label: 'Mis Tickets', icon: Ticket, show: !!user },
-    { path: '/rrpp', label: 'RRPP', icon: Users, show: userRole === 'rrpp' || userRole === 'admin' || userRole === 'super_admin' || isOrgAdmin },
-    { path: '/admin', label: 'Admin', icon: Shield, show: userRole === 'admin' || userRole === 'super_admin' || isOrgAdmin },
-    { path: '/super-admin', label: 'Super Admin', icon: Building2, show: userRole === 'super_admin' },
-    { path: '/guardia', label: 'Check-in (Guardia)', icon: Shield, show: userRole === 'guardia' || userRole === 'admin' || userRole === 'super_admin' || isOrgAdmin },
-    { path: '/puerta', label: 'Venta Puerta', icon: Ticket, show: userRole === 'puerta' || userRole === 'admin' || userRole === 'super_admin' || isOrgAdmin },
+    { path: '/rrpp', label: 'RRPP', icon: Users, show: hasRole('rrpp') || hasRole('admin') || hasRole('super_admin') || isOrgAdmin },
+    { path: '/admin', label: 'Admin', icon: Shield, show: hasRole('admin') || hasRole('super_admin') || isOrgAdmin },
+    { path: '/super-admin', label: 'Super Admin', icon: Building2, show: hasRole('super_admin') },
+    { path: '/guardia', label: 'Check-in (Guardia)', icon: Shield, show: hasRole('guardia') || hasRole('admin') || hasRole('super_admin') || isOrgAdmin },
+    { path: '/puerta', label: 'Venta Puerta', icon: Ticket, show: hasRole('puerta') || hasRole('admin') || hasRole('super_admin') || isOrgAdmin },
   ].filter((item) => item.show);
 
   return (

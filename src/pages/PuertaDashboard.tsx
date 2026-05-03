@@ -8,14 +8,14 @@ import { supabase } from '@/integrations/supabase/client';
 import { toast } from 'sonner';
 
 export default function PuertaDashboard() {
-  const { activeOrg, userRole, user } = useAuth();
+  const { activeOrg, hasRole, user } = useAuth();
   const orgId = activeOrg?.id;
   const { data: events, isLoading: eventsLoading } = useEvents(orgId);
   const [selectedEventId, setSelectedEventId] = useState<string>('');
   const [loading, setLoading] = useState(false);
   const [generatedTicket, setGeneratedTicket] = useState<{ code: string, typeName: string, price: number } | null>(null);
 
-  if (!orgId && userRole !== 'super_admin' && userRole !== 'puerta' && userRole !== 'admin') {
+  if (!orgId && !hasRole('super_admin') && !hasRole('puerta') && !hasRole('admin')) {
     return (
       <div className="text-center py-20 space-y-3">
         <Ticket className="h-12 w-12 text-muted-foreground mx-auto" />

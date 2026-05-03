@@ -18,6 +18,8 @@ interface AuthContextType {
   userOrgs: OrgInfo[];
   activeOrg: OrgInfo | null;
   setActiveOrg: (org: OrgInfo | null) => void;
+  userRoles: AppRole[];
+  hasRole: (role: AppRole) => boolean;
   signOut: () => Promise<void>;
 }
 
@@ -29,6 +31,8 @@ const AuthContext = createContext<AuthContextType>({
   userOrgs: [],
   activeOrg: null,
   setActiveOrg: () => {},
+  userRoles: [],
+  hasRole: () => false,
   signOut: async () => {},
 });
 
@@ -39,8 +43,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [session, setSession] = useState<Session | null>(null);
   const [loading, setLoading] = useState(true);
   const [userRole, setUserRole] = useState<AppRole | null>(null);
+  const [userRoles, setUserRoles] = useState<AppRole[]>([]);
   const [userOrgs, setUserOrgs] = useState<OrgInfo[]>([]);
   const [activeOrg, setActiveOrg] = useState<OrgInfo | null>(null);
+
+  const hasRole = (role: AppRole) => userRoles.includes(role);
 
   useEffect(() => {
     const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
@@ -53,6 +60,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         }, 0);
       } else {
         setUserRole(null);
+        setUserRoles([]);
         setUserOrgs([]);
         setActiveOrg(null);
       }
@@ -80,10 +88,12 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     
     if (error || !data || data.length === 0) {
       setUserRole('user');
+      setUserRoles(['user']);
       return;
     }
 
     const roles = data.map(r => r.role as AppRole);
+    setUserRoles(roles);
     
     // Jerarquía de roles
     if (roles.includes('super_admin')) {
@@ -124,7 +134,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, userRole, userOrgs, activeOrg, setActiveOrg, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, userRole, userRoles, hasRole, userOrgs, activeOrg, setActiveOrg, signOut }}>
       {children}
     </AuthContext.Provider>
   );

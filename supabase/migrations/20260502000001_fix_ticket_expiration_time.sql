@@ -1,6 +1,6 @@
--- Fix: Ensure mesas scan correctly based on zone category,
--- handle missing/legacy zone_table_ids safely,
--- and return 'MESA VIP' to the scanner UI instead of 'Entrada Free Pass'.
+-- Fix: Extend default ticket expiration to 4:00 AM of the next day.
+-- Fix: Handle free_pass_until times that are past midnight (early morning) correctly by adding 1 day.
+
 CREATE OR REPLACE FUNCTION public.validate_ticket(p_code TEXT, p_scanner_id UUID DEFAULT NULL)
 RETURNS JSONB
 LANGUAGE plpgsql
