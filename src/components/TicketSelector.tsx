@@ -28,6 +28,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   const [showMap, setShowMap] = useState(false);
   const [selectedTable, setSelectedTable] = useState<{ id: string, zoneName: string, label: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<{ title: string, body: string } | null>(null);
+  const [receiptImage, setReceiptImage] = useState<File | null>(null);
   
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -128,6 +129,28 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
       }
 
       // 2. Normal Request flow for remaining tickets
+      if (!receiptImage) {
+        toast.error("Debes adjuntar el comprobante de pago");
+        setLoading(false);
+        return;
+      }
+
+      const fileExt = receiptImage.name.split('.').pop();
+      const fileName = `${Math.random()}.${fileExt}`;
+      const filePath = `${user.id}/${fileName}`;
+
+      const { error: uploadError } = await supabase.storage
+        .from('receipts')
+        .upload(filePath, receiptImage);
+
+      if (uploadError) {
+        throw new Error('Error al subir el comprobante: ' + uploadError.message);
+      }
+
+      const { data: { publicUrl } } = supabase.storage
+        .from('receipts')
+        .getPublicUrl(filePath);
+
       const { error } = await supabase.from('purchase_requests' as any).insert({
         event_id: eventId,
         user_id: user.id,
@@ -136,7 +159,8 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           ...tt,
           zone_table_id: tt.type === 'mesa_vip' && selectedTable ? selectedTable.id : null
         })),
-        total_amount: typesToRequest.reduce((acc, t) => acc + (t.price * t.quantity), 0)
+        total_amount: typesToRequest.reduce((acc, t) => acc + (t.price * t.quantity), 0),
+        receipt_url: publicUrl
       });
 
       if (error) throw error;
@@ -167,7 +191,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
             Ver mis Tickets
           </Link>
         </div>
-        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setQuantities({}); setSuccessMessage(null); }} className="w-full text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mt-2">
+        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setReceiptImage(null); setQuantities({}); setSuccessMessage(null); }} className="w-full text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mt-2">
           Volver al Evento
         </button>
       </motion.div>
@@ -215,10 +239,20 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           <Download className="h-4 w-4" /> 1. Descargar QR
         </button>
 
+        <div className="mt-4 space-y-2">
+          <label className="text-sm font-semibold text-foreground">Sube tu comprobante de pago *</label>
+          <input 
+            type="file" 
+            accept="image/*" 
+            onChange={(e) => setReceiptImage(e.target.files?.[0] || null)}
+            className="w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+          />
+        </div>
+
         <button 
            onClick={handleRequestPurchase}
-           disabled={loading || !qrDownloaded}
-           className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40"
+           disabled={loading || !qrDownloaded || !receiptImage}
+           className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 mt-4"
         >
           {loading ? 'Enviando...' : '2. Verificar Pago'}
         </button>

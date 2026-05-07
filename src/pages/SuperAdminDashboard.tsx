@@ -220,6 +220,20 @@ export default function SuperAdminDashboard() {
       // 3. Delete the request
       await supabase.from('purchase_requests' as any).delete().eq('id', req.id);
 
+      // 4. Delete image from storage
+      if (req.receipt_url) {
+        try {
+          const urlParts = req.receipt_url.split('/');
+          const fileName = urlParts.pop();
+          const folderName = urlParts.pop();
+          if (folderName && fileName) {
+            await supabase.storage.from('receipts').remove([`${folderName}/${fileName}`]);
+          }
+        } catch(e) {
+          console.error('Failed to delete receipt image', e);
+        }
+      }
+
       toast.success('Pago aprobado y entradas generadas');
       queryClient.invalidateQueries({ queryKey: ['super-admin-purchase-requests'] });
     } catch (err: any) {
@@ -227,19 +241,33 @@ export default function SuperAdminDashboard() {
     }
   };
 
-  const handleRejectRequest = async (id: string) => {
+  const handleRejectRequest = async (req: any) => {
     if (!confirm('¿Estás seguro de RECHAZAR y eliminar esta solicitud de compra?')) return;
     try {
       const { data, error } = await supabase
         .from('purchase_requests' as any)
         .delete()
-        .eq('id', id)
+        .eq('id', req.id)
         .select();
 
       if (error) throw error;
 
       if (!data || data.length === 0) {
         throw new Error('No se pudo rechazar la solicitud. Verifica tus permisos de administrador.');
+      }
+
+      // Delete image from storage
+      if (req.receipt_url) {
+        try {
+          const urlParts = req.receipt_url.split('/');
+          const fileName = urlParts.pop();
+          const folderName = urlParts.pop();
+          if (folderName && fileName) {
+            await supabase.storage.from('receipts').remove([`${folderName}/${fileName}`]);
+          }
+        } catch(e) {
+          console.error('Failed to delete receipt image', e);
+        }
       }
 
       toast.success('Solicitud rechazada');
@@ -374,11 +402,19 @@ export default function SuperAdminDashboard() {
                              <p key={i} className="text-sm text-foreground">• {tt.quantity}x {tt.name} (Bs. {tt.price} c/u)</p>
                            ))}
                         </div>
+                        {r.receipt_url && (
+                           <div className="mt-2">
+                             <p className="text-xs font-semibold text-muted-foreground mb-1 uppercase tracking-wider">Comprobante:</p>
+                             <a href={r.receipt_url} target="_blank" rel="noopener noreferrer">
+                               <img src={r.receipt_url} alt="Comprobante de pago" className="w-full max-w-[200px] h-auto rounded-lg ring-1 ring-border cursor-pointer hover:opacity-80 transition-opacity" />
+                             </a>
+                           </div>
+                        )}
                         <div className="flex items-center gap-2 pt-1 border-t border-border mt-2">
                           <button onClick={() => handleApproveRequest(r)} className="flex-1 rounded-xl bg-primary py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all active:scale-[0.98]">
                             Aprobar
                           </button>
-                          <button onClick={() => handleRejectRequest(r.id)} className="flex-1 rounded-xl bg-destructive/10 text-destructive py-2.5 text-sm font-semibold hover:bg-destructive/20 transition-all active:scale-[0.98]">
+                          <button onClick={() => handleRejectRequest(r)} className="flex-1 rounded-xl bg-destructive/10 text-destructive py-2.5 text-sm font-semibold hover:bg-destructive/20 transition-all active:scale-[0.98]">
                             Rechazar
                           </button>
                         </div>
