@@ -12,7 +12,7 @@ import EventMapStatus from '@/components/EventMapStatus';
 import { Info } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
-type Tab = 'overview' | 'checkin' | 'events' | 'zones' | 'rrpp' | 'sales' | 'consumo' | 'scanners';
+type Tab = 'overview' | 'checkin' | 'events' | 'zones' | 'rrpp' | 'personal' | 'sales' | 'consumo' | 'scanners';
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -52,6 +52,11 @@ export default function AdminDashboard() {
   const [selectedConsumoEventId, setSelectedConsumoEventId] = useState<string | null>(null);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
 
+  // Personal (Staff) assign state
+  const [personalRoleTab, setPersonalRoleTab] = useState<'guardia' | 'puerta'>('guardia');
+  const [personalEmail, setPersonalEmail] = useState('');
+  const [assigningPersonal, setAssigningPersonal] = useState(false);
+
   // Ticket type form state
   const [showTicketForm, setShowTicketForm] = useState<string | null>(null);
   const [ticketForm, setTicketForm] = useState({ name: '', type: 'normal' as string, price: '', quantity: '' });
@@ -67,7 +72,7 @@ export default function AdminDashboard() {
   const [savingScanner, setSavingScanner] = useState(false);
   const [bulkGenForm, setBulkGenForm] = useState({ eventId: '', guestName: '', quantity: '1' });
   const [generatingBulk, setGeneratingBulk] = useState(false);
-  const [viewingQR, setViewingQR] = useState<{code: string, name: string} | null>(null);
+  const [viewingQR, setViewingQR] = useState<{ code: string, name: string } | null>(null);
   const [bulkGeneratedTickets, setBulkGeneratedTickets] = useState<any[] | null>(null);
   const [sharingTickets, setSharingTickets] = useState(false);
 
@@ -84,6 +89,7 @@ export default function AdminDashboard() {
     { value: 'events', label: 'Eventos', icon: Calendar },
     { value: 'zones', label: 'Mesas', icon: MapPin },
     { value: 'rrpp', label: 'RRPP', icon: Users },
+    { value: 'personal', label: 'Personal', icon: Shield },
     { value: 'sales', label: 'Gestión', icon: DollarSign },
     { value: 'consumo', label: 'Consumo', icon: Zap },
     { value: 'scanners', label: 'Accesos', icon: ScanLine },
@@ -108,14 +114,30 @@ export default function AdminDashboard() {
         .select('user_id, name, email')
         .in('user_id', uids);
       const profileMap = Object.fromEntries((profiles || []).map((p: any) => [p.user_id, p]));
-      return (data || []).map((a: any) => ({ 
-        ...a, 
+      return (data || []).map((a: any) => ({
+        ...a,
         profile: profileMap[a.user_id],
         creatorProfile: a.created_by ? profileMap[a.created_by] : null
       }));
     },
     enabled: !!orgId,
   });
+
+  // Fetch roles for org members to identify guardias and puertas
+  const memberIds = orgMembers?.map(m => m.user_id) || [];
+  const { data: memberRoles } = useQuery({
+    queryKey: ['org-member-roles', orgId, memberIds],
+    queryFn: async () => {
+      if (memberIds.length === 0) return [];
+      const { data, error } = await supabase.from('user_roles').select('*').in('user_id', memberIds);
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: memberIds.length > 0,
+  });
+
+  const guardias = orgMembers?.filter(m => memberRoles?.some(r => r.user_id === m.user_id && r.role === 'guardia')) || [];
+  const puertas = orgMembers?.filter(m => memberRoles?.some(r => r.user_id === m.user_id && r.role === 'puerta')) || [];
 
   if (!orgId && userRole !== 'super_admin') {
     return (
@@ -268,6 +290,66 @@ export default function AdminDashboard() {
     setAssigningRRPP(false);
   };
 
+  const handleAssignPersonal = async () => {
+    if (!personalEmail || !orgId) return;
+    setAssigningPersonal(true);
+    try {
+      const { data: profile } = await supabase.from('profiles').select('user_id').eq('email', personalEmail.trim()).maybeSingle();
+      if (!profile) {
+        toast.error('Usuario no encontrado');
+        setAssigningPersonal(false);
+        return;
+      }
+
+      // Update or insert global role
+      const { data: existingRole } = await supabase.from('user_roles').select('*').eq('user_id', profile.user_id).eq('role', personalRoleTab).maybeSingle();
+      if (!existingRole) {
+        await supabase.from('user_roles').insert({ user_id: profile.user_id, role: personalRoleTab as any });
+      }
+
+      // Add to org_members to link to the organization
+      const { data: existingMember } = await supabase.from('org_members').select('*').eq('organization_id', orgId).eq('user_id', profile.user_id).maybeSingle();
+      if (!existingMember) {
+        const { error } = await supabase.from('org_members').insert({
+          organization_id: orgId,
+          user_id: profile.user_id,
+          role: 'staff'
+        });
+        if (error) throw error;
+      }
+
+      toast.success(`${personalRoleTab === 'guardia' ? 'Guardia' : 'Personal de Puerta'} asignado con éxito`);
+      setPersonalEmail('');
+      queryClient.invalidateQueries({ queryKey: ['org_members'] });
+      queryClient.invalidateQueries({ queryKey: ['org-member-roles'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al asignar personal');
+    }
+    setAssigningPersonal(false);
+  };
+
+  const handleDeletePersonal = async (userId: string, roleToRemove: string) => {
+    if (!confirm(`¿Remover acceso de ${roleToRemove}?`)) return;
+    try {
+      // Remove the specific role
+      await supabase.from('user_roles').delete().eq('user_id', userId).eq('role', roleToRemove);
+
+      // Check if user has other important roles for this org before removing from org_members
+      const { data: remainingRoles } = await supabase.from('user_roles').select('*').eq('user_id', userId);
+      const hasOtherStaffRoles = remainingRoles?.some(r => r.role === 'guardia' || r.role === 'puerta' || r.role === 'admin');
+
+      if (!hasOtherStaffRoles) {
+        await supabase.from('org_members').delete().eq('organization_id', orgId).eq('user_id', userId);
+      }
+
+      toast.success('Acceso removido');
+      queryClient.invalidateQueries({ queryKey: ['org_members'] });
+      queryClient.invalidateQueries({ queryKey: ['org-member-roles'] });
+    } catch (err: any) {
+      toast.error('Error al remover acceso');
+    }
+  };
+
   const handleDeleteEvent = async (id: string) => {
     if (!confirm('¿Eliminar evento?')) return;
     const { error } = await supabase.from('events').delete().eq('id', id);
@@ -366,8 +448,8 @@ export default function AdminDashboard() {
     setGeneratingBulk(true);
     try {
       const event = events?.find(e => e.id === bulkGenForm.eventId);
-      const ticketType = event?.ticket_types?.find(t => 
-        category === 'vip' 
+      const ticketType = event?.ticket_types?.find(t =>
+        category === 'vip'
           ? (t.type === 'vip' || t.name.toLowerCase().includes('vip'))
           : (t.type === 'normal' || t.name.toLowerCase().includes('general'))
       );
@@ -414,13 +496,15 @@ export default function AdminDashboard() {
 
       const { toBlob } = await import('html-to-image');
 
-      for (let i = 0; i < nodes.length; i++) {
-        const node = nodes[i] as HTMLElement;
-        const blob = await toBlob(node, { quality: 0.95 });
+      // Generar todas las imágenes en paralelo y con menor calidad/pixelRatio para máxima velocidad
+      const promises = Array.from(nodes).map(async (node, i) => {
+        const blob = await toBlob(node as HTMLElement, { quality: 0.85, pixelRatio: 1.5 });
         if (blob) {
           files.push(new File([blob], `entrada-${i + 1}.png`, { type: 'image/png' }));
         }
-      }
+      });
+      
+      await Promise.all(promises);
 
       if (navigator.canShare && navigator.canShare({ files })) {
         await navigator.share({
@@ -579,10 +663,10 @@ export default function AdminDashboard() {
 
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Descripción del Evento</label>
-                <textarea 
-                  placeholder="Escribe aquí los detalles del evento..." 
-                  value={eventForm.description} 
-                  onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })} 
+                <textarea
+                  placeholder="Escribe aquí los detalles del evento..."
+                  value={eventForm.description}
+                  onChange={(e) => setEventForm({ ...eventForm, description: e.target.value })}
                   className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground ring-1 ring-border focus:ring-primary outline-none transition-all min-h-[100px] resize-none"
                 />
               </div>
@@ -614,22 +698,22 @@ export default function AdminDashboard() {
                   {eventForm.allow_rrpp_guests && (
                     <div className="flex items-center gap-4 animate-in slide-in-from-right-2 duration-300">
                       <div className="flex items-center gap-1.5">
-                        <input 
-                          type="number" 
-                          placeholder="Límite" 
-                          value={eventForm.rrpp_guests_per_promoter} 
-                          onChange={(e) => setEventForm({ ...eventForm, rrpp_guests_per_promoter: e.target.value })} 
-                          className="w-14 rounded-lg bg-background px-2 py-1.5 text-xs border border-primary/30 outline-none focus:ring-2 focus:ring-primary/20 text-foreground text-center" 
+                        <input
+                          type="number"
+                          placeholder="Límite"
+                          value={eventForm.rrpp_guests_per_promoter}
+                          onChange={(e) => setEventForm({ ...eventForm, rrpp_guests_per_promoter: e.target.value })}
+                          className="w-14 rounded-lg bg-background px-2 py-1.5 text-xs border border-primary/30 outline-none focus:ring-2 focus:ring-primary/20 text-foreground text-center"
                         />
                         <span className="text-[9px] font-black text-primary uppercase">General</span>
                       </div>
                       <div className="flex items-center gap-1.5">
-                        <input 
-                          type="number" 
-                          placeholder="Límite" 
-                          value={eventForm.rrpp_vip_guests_per_promoter} 
-                          onChange={(e) => setEventForm({ ...eventForm, rrpp_vip_guests_per_promoter: e.target.value })} 
-                          className="w-14 rounded-lg bg-background px-2 py-1.5 text-xs border border-warning/30 outline-none focus:ring-2 focus:ring-warning/20 text-foreground text-center" 
+                        <input
+                          type="number"
+                          placeholder="Límite"
+                          value={eventForm.rrpp_vip_guests_per_promoter}
+                          onChange={(e) => setEventForm({ ...eventForm, rrpp_vip_guests_per_promoter: e.target.value })}
+                          className="w-14 rounded-lg bg-background px-2 py-1.5 text-xs border border-warning/30 outline-none focus:ring-2 focus:ring-warning/20 text-foreground text-center"
                         />
                         <span className="text-[9px] font-black text-warning uppercase">VIP</span>
                       </div>
@@ -642,12 +726,12 @@ export default function AdminDashboard() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-primary uppercase px-1">Meta Consumo General</label>
                   <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      placeholder="Check-ins req." 
-                      value={eventForm.consumo_general_requirement} 
-                      onChange={(e) => setEventForm({ ...eventForm, consumo_general_requirement: e.target.value })} 
-                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-primary/20 outline-none focus:ring-2 focus:ring-primary/20 text-foreground" 
+                    <input
+                      type="number"
+                      placeholder="Check-ins req."
+                      value={eventForm.consumo_general_requirement}
+                      onChange={(e) => setEventForm({ ...eventForm, consumo_general_requirement: e.target.value })}
+                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-primary/20 outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
                     />
                     <Zap className="h-4 w-4 text-primary shrink-0" />
                   </div>
@@ -655,12 +739,12 @@ export default function AdminDashboard() {
                 <div className="space-y-1">
                   <label className="text-[10px] font-black text-warning uppercase px-1">Meta Consumo VIP</label>
                   <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
-                      placeholder="Check-ins req." 
-                      value={eventForm.consumo_vip_requirement} 
-                      onChange={(e) => setEventForm({ ...eventForm, consumo_vip_requirement: e.target.value })} 
-                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-warning/20 outline-none focus:ring-2 focus:ring-warning/20 text-foreground" 
+                    <input
+                      type="number"
+                      placeholder="Check-ins req."
+                      value={eventForm.consumo_vip_requirement}
+                      onChange={(e) => setEventForm({ ...eventForm, consumo_vip_requirement: e.target.value })}
+                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-warning/20 outline-none focus:ring-2 focus:ring-warning/20 text-foreground"
                     />
                     <Zap className="h-4 w-4 text-warning shrink-0" />
                   </div>
@@ -681,21 +765,21 @@ export default function AdminDashboard() {
             {events?.map((ev) => (
               <div key={ev.id} className="glass-card p-4 space-y-3 relative group border-border/50 hover:border-primary/30 transition-all">
                 <div className="absolute top-4 right-4 flex gap-2 opacity-0 group-hover:opacity-100 transition-opacity">
-                  <button 
-                    onClick={() => { 
-                      setEditEventId(ev.id); 
-                      setEventForm({ 
-                        ...ev, 
-                        capacity: ev.capacity.toString(), 
-                        general_tables_count: '', 
-                        vip_tables_count: '', 
-                        rrpp_guests_per_promoter: ev.rrpp_guests_per_promoter?.toString() || '', 
-                        rrpp_vip_guests_per_promoter: (ev as any).rrpp_vip_guests_per_promoter?.toString() || '', 
-                        consumo_general_requirement: ev.consumo_general_requirement?.toString() || '', 
-                        consumo_vip_requirement: ev.consumo_vip_requirement?.toString() || '' 
-                      } as any); 
-                      setShowEventForm(true); 
-                    }} 
+                  <button
+                    onClick={() => {
+                      setEditEventId(ev.id);
+                      setEventForm({
+                        ...ev,
+                        capacity: ev.capacity.toString(),
+                        general_tables_count: '',
+                        vip_tables_count: '',
+                        rrpp_guests_per_promoter: ev.rrpp_guests_per_promoter?.toString() || '',
+                        rrpp_vip_guests_per_promoter: (ev as any).rrpp_vip_guests_per_promoter?.toString() || '',
+                        consumo_general_requirement: ev.consumo_general_requirement?.toString() || '',
+                        consumo_vip_requirement: ev.consumo_vip_requirement?.toString() || ''
+                      } as any);
+                      setShowEventForm(true);
+                    }}
                     className="p-2 rounded-lg bg-secondary text-muted-foreground hover:text-primary hover:bg-primary/10"
                   >
                     <Edit className="h-4 w-4" />
@@ -762,7 +846,7 @@ export default function AdminDashboard() {
                 <div key={zone.id} className="glass-card p-4">
                   <div className="flex justify-between items-center mb-2">
                     <h3 className="font-bold">{zone.name}</h3>
-                    <button 
+                    <button
                       onClick={() => handleDeleteZone(zone.id)}
                       className="p-1.5 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
                       title="Eliminar Croquis"
@@ -800,9 +884,9 @@ export default function AdminDashboard() {
                 <input type="checkbox" id="tl" checked={isTeamLeader} onChange={(e) => setIsTeamLeader(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
                 <label htmlFor="tl" className="text-xs font-medium text-foreground">Team Leader</label>
               </div>
-              <select 
-                value={rrppZone} 
-                onChange={(e) => setRrppZone(e.target.value)} 
+              <select
+                value={rrppZone}
+                onChange={(e) => setRrppZone(e.target.value)}
                 className="rounded-lg bg-secondary px-3 py-2 text-xs border border-border focus:ring-1 focus:ring-primary outline-none"
               >
                 <option value="">Rango (Default)</option>
@@ -833,12 +917,82 @@ export default function AdminDashboard() {
         </div>
       )}
 
+      {tab === 'personal' && (
+        <div className="space-y-4">
+          <div className="flex gap-2 bg-secondary p-1 rounded-xl w-fit mb-4">
+            <button
+              onClick={() => setPersonalRoleTab('guardia')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${personalRoleTab === 'guardia' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Guardias
+            </button>
+            <button
+              onClick={() => setPersonalRoleTab('puerta')}
+              className={`px-4 py-2 rounded-lg text-xs font-bold transition-all ${personalRoleTab === 'puerta' ? 'bg-background shadow-sm text-foreground' : 'text-muted-foreground hover:text-foreground'}`}
+            >
+              Personal de Puerta
+            </button>
+          </div>
+
+          <div className="glass-card p-4 space-y-3 animate-in fade-in">
+            <h3 className="font-bold text-sm">Asignar {personalRoleTab === 'guardia' ? 'Guardia' : 'Personal de Puerta'}</h3>
+            <div className="flex gap-2">
+              <input
+                placeholder="Email del usuario"
+                value={personalEmail}
+                onChange={(e) => setPersonalEmail(e.target.value)}
+                className="flex-1 rounded-xl bg-secondary px-4 py-3 text-sm"
+              />
+              <button
+                onClick={handleAssignPersonal}
+                disabled={assigningPersonal || !personalEmail.trim()}
+                className="rounded-xl bg-primary px-6 py-3 text-sm font-bold text-white hover:shadow-glow transition-all active:scale-[0.98] disabled:opacity-50 flex items-center gap-2"
+              >
+                {assigningPersonal ? <Loader2 className="h-4 w-4 animate-spin" /> : <UserPlus className="h-4 w-4" />}
+                Asignar
+              </button>
+            </div>
+            <p className="text-[10px] text-muted-foreground">
+              El usuario debe haberse registrado previamente en la aplicación para poder ser asignado.
+            </p>
+          </div>
+
+          <div className="space-y-2">
+            <h3 className="font-bold text-sm text-foreground mt-4 mb-2">
+              {personalRoleTab === 'guardia' ? 'Guardias Activos' : 'Personal de Puerta Activo'}
+            </h3>
+            {(personalRoleTab === 'guardia' ? guardias : puertas).length === 0 ? (
+              <div className="text-center py-8 glass-card border-dashed">
+                <Shield className="h-8 w-8 text-muted-foreground mx-auto mb-2 opacity-50" />
+                <p className="text-sm text-muted-foreground">No hay {personalRoleTab === 'guardia' ? 'guardias' : 'personal de puerta'} asignado</p>
+              </div>
+            ) : (
+              (personalRoleTab === 'guardia' ? guardias : puertas).map(member => (
+                <div key={member.id} className="glass-card p-3 flex justify-between items-center animate-in slide-in-from-bottom-2">
+                  <div>
+                    <p className="text-sm font-bold text-foreground">{member.profiles?.name || 'Sin nombre'}</p>
+                    <p className="text-xs text-muted-foreground">{member.profiles?.email}</p>
+                  </div>
+                  <button
+                    onClick={() => handleDeletePersonal(member.user_id, personalRoleTab)}
+                    className="p-2 text-muted-foreground hover:text-destructive hover:bg-destructive/10 rounded-lg transition-colors"
+                    title="Remover acceso"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </button>
+                </div>
+              ))
+            )}
+          </div>
+        </div>
+      )}
+
       {tab === 'consumo' && (
         <div className="space-y-4">
           <div className="glass-card p-4 space-y-4">
             <h3 className="font-bold text-lg text-foreground">Configuración de Consumo</h3>
-            <select 
-              value={selectedConsumoEventId || ''} 
+            <select
+              value={selectedConsumoEventId || ''}
               onChange={(e) => setSelectedConsumoEventId(e.target.value)}
               className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary cursor-pointer"
             >
@@ -853,8 +1007,8 @@ export default function AdminDashboard() {
                 <div className="p-4 bg-primary/5 rounded-xl border border-primary/20 space-y-2">
                   <p className="text-[10px] font-black text-primary uppercase">Meta RRPP General</p>
                   <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       value={events?.find(e => e.id === selectedConsumoEventId)?.consumo_general_requirement || 0}
                       readOnly
                       className="w-16 bg-background rounded-lg px-2 py-1.5 text-center font-bold text-sm border border-border"
@@ -866,8 +1020,8 @@ export default function AdminDashboard() {
                 <div className="p-4 bg-warning/5 rounded-xl border border-warning/20 space-y-2">
                   <p className="text-[10px] font-black text-warning uppercase">Meta RRPP VIP</p>
                   <div className="flex items-center gap-2">
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       value={events?.find(e => e.id === selectedConsumoEventId)?.consumo_vip_requirement || 0}
                       readOnly
                       className="w-16 bg-background rounded-lg px-2 py-1.5 text-center font-bold text-sm border border-border"
@@ -892,7 +1046,7 @@ export default function AdminDashboard() {
               <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
                 {rrppAssignments?.map(a => {
                   const checkins = reservations?.filter(r => r.event_id === selectedConsumoEventId && r.rrpp_id === a.user_id && r.status === 'used').length || 0;
-                  const goal = a.zone_type === 'vip' 
+                  const goal = a.zone_type === 'vip'
                     ? (events?.find(e => e.id === selectedConsumoEventId)?.consumo_vip_requirement || 0)
                     : (events?.find(e => e.id === selectedConsumoEventId)?.consumo_general_requirement || 0);
                   const isQualified = goal > 0 && checkins >= goal;
@@ -929,7 +1083,7 @@ export default function AdminDashboard() {
           {!selectedEventStatsId ? (
             <div className="space-y-4">
               <h3 className="font-bold text-lg text-foreground px-1">Gestión por Evento</h3>
-              
+
               {/* Quick Bulk Generation (Standalone) */}
               <div className="glass-card p-6 border-2 border-primary/10 shadow-glow-sm bg-primary/5">
                 <div className="flex items-center gap-3 mb-6">
@@ -945,8 +1099,8 @@ export default function AdminDashboard() {
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Evento</label>
-                    <select 
-                      value={bulkGenForm.eventId} 
+                    <select
+                      value={bulkGenForm.eventId}
                       onChange={(e) => setBulkGenForm({ ...bulkGenForm, eventId: e.target.value })}
                       className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary appearance-none cursor-pointer"
                     >
@@ -958,8 +1112,8 @@ export default function AdminDashboard() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Nombre (Opcional)</label>
-                    <input 
-                      placeholder="Ej: Invitado" 
+                    <input
+                      placeholder="Ej: Invitado"
                       value={bulkGenForm.guestName}
                       onChange={(e) => setBulkGenForm({ ...bulkGenForm, guestName: e.target.value })}
                       className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary"
@@ -967,8 +1121,8 @@ export default function AdminDashboard() {
                   </div>
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Cantidad</label>
-                    <input 
-                      type="number" 
+                    <input
+                      type="number"
                       min="1"
                       max="50"
                       value={bulkGenForm.quantity}
@@ -1006,8 +1160,8 @@ export default function AdminDashboard() {
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 {events?.map((ev) => (
-                  <button 
-                    key={ev.id} 
+                  <button
+                    key={ev.id}
                     onClick={() => setSelectedEventStatsId(ev.id)}
                     className="glass-card p-4 text-left hover:border-primary/50 transition-all group"
                   >
@@ -1026,13 +1180,13 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <div className="space-y-6">
-              <button 
-                onClick={() => setSelectedEventStatsId(null)} 
+              <button
+                onClick={() => setSelectedEventStatsId(null)}
                 className="flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-primary transition-colors"
               >
                 <ArrowLeft className="h-4 w-4" /> Volver a la lista
               </button>
-              
+
               <div className="flex flex-col gap-1">
                 <h3 className="text-xl font-black text-foreground">
                   {events?.find(e => e.id === selectedEventStatsId)?.title}
@@ -1053,7 +1207,7 @@ export default function AdminDashboard() {
                         <span className="text-sm font-bold text-muted-foreground uppercase">Control de Acceso</span>
                       </div>
                       {(scanners?.length || 0) > 1 && (
-                        <button 
+                        <button
                           onClick={() => setExpandedCardId(expandedCardId === 'access' ? null : 'access')}
                           className="text-[10px] font-bold text-primary hover:underline uppercase"
                         >
@@ -1061,7 +1215,7 @@ export default function AdminDashboard() {
                         </button>
                       )}
                     </div>
-                    
+
                     <div className="grid grid-cols-2 gap-4">
                       <div className="space-y-1">
                         <p className="text-[10px] font-black text-success uppercase tracking-wider">Ingresaron</p>
@@ -1117,7 +1271,7 @@ export default function AdminDashboard() {
                     <div>
                       <p className="text-[10px] font-black text-primary uppercase tracking-wider">Recaudación Total</p>
                       <p className="text-3xl font-black text-foreground mt-1">
-                        Bs. {reservations?.filter(r => r.event_id === selectedEventStatsId && (!r.rrpp_id || !adminMemberIds.includes(r.rrpp_id))).reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0) || 0}
+                        Bs. {reservations?.filter(r => r.event_id === selectedEventStatsId && !r.guest_name && r.type !== 'rrpp_free' && r.type !== 'mesa_vip').reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0) || 0}
                       </p>
                     </div>
                     <div className="text-right">
@@ -1133,39 +1287,46 @@ export default function AdminDashboard() {
               {/* Categorized Sections */}
               {(() => {
                 const eventRes = reservations?.filter(r => r.event_id === selectedEventStatsId) || [];
-                const eventAssignments = rrppAssignments?.filter(a => a.event_id === selectedEventStatsId) || [];
-                
+                // Allow RRPP assignments that are org-wide (event_id is null) or specific to this event
+                const eventAssignments = rrppAssignments?.filter(a => !a.event_id || a.event_id === selectedEventStatsId) || [];
+
+                const isMesa = (r: any) => r.type === 'mesa_vip';
+                const isFreePass = (r: any) => r.type === 'rrpp_free';
+                const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && !isMesa(r) && !isFreePass(r);
+                const isInvitado = (r: any) => !isRRPP(r) && !isMesa(r) && !isFreePass(r) && !!r.guest_name;
+                const isPuerta = (r: any) => !isRRPP(r) && !isMesa(r) && !isFreePass(r) && !r.guest_name;
+
                 const processData = (groupName: 'general' | 'vip') => {
                   const filtered = eventRes.filter(r => {
-                    if (r.type === 'rrpp_free') {
+                    if (isFreePass(r)) {
                       if (r.rrpp_id) {
                         const assignment = eventAssignments.find(a => a.user_id === r.rrpp_id);
                         if (assignment) return (assignment.zone_type || 'general') === groupName;
                       }
                       return groupName === 'general';
                     }
-                    
-                    if (r.type === 'mesa_vip') {
+
+                    if (isMesa(r)) {
                       const zoneId = r.zone_table_id?.split(':')[0];
                       const zone = zones?.find(z => z.id === zoneId);
                       return (zone?.category || 'general') === groupName;
                     }
-                    
+
                     if (r.rrpp_id) {
                       const assignment = eventAssignments.find(a => a.user_id === r.rrpp_id);
                       if (assignment) return (assignment.zone_type || 'general') === groupName;
                     }
-                    
-                    // Door / Direct
+
+                    // Door / Direct / Admin
                     return (r.ticket_types?.type === 'vip' ? 'vip' : 'general') === groupName;
                   });
 
                   const sources = {
-                    'Admin': filtered.filter(r => r.rrpp_id && adminMemberIds.includes(r.rrpp_id) && r.type !== 'mesa_vip'),
-                    'Free Pass': filtered.filter(r => r.type === 'rrpp_free'),
-                    'Mesa': filtered.filter(r => r.type === 'mesa_vip'),
-                    'RRPP': filtered.filter(r => r.rrpp_id && !adminMemberIds.includes(r.rrpp_id) && r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && eventAssignments.some(a => a.user_id === r.rrpp_id)),
-                    'Puerta': filtered.filter(r => !r.rrpp_id || (!adminMemberIds.includes(r.rrpp_id) && r.type !== 'rrpp_free' && r.type !== 'mesa_vip' && !eventAssignments.some(a => a.user_id === r.rrpp_id)))
+                    'Invitados (Admin)': filtered.filter(isInvitado),
+                    'Free Pass': filtered.filter(isFreePass),
+                    'Mesa': filtered.filter(isMesa),
+                    'RRPP': filtered.filter(isRRPP),
+                    'Puerta': filtered.filter(isPuerta)
                   };
 
                   return { filtered, sources };
@@ -1190,7 +1351,7 @@ export default function AdminDashboard() {
 
                         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
                           {Object.entries(group.data.sources).map(([source, resList]) => {
-                            
+
                             let money = 0;
                             if (source === 'Mesa') {
                               const uniqueTableIds = new Set(resList.map(r => r.table_id || r.zone_table_id));
@@ -1204,13 +1365,13 @@ export default function AdminDashboard() {
                             } else {
                               money = resList.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
                             }
-                            
+
                             const cardId = `${group.name}-${source}`;
                             const isExpanded = expandedCardId === cardId;
 
                             return (
                               <div key={source} className={`glass-card overflow-hidden border-t-2 ${resList.length > 0 ? `border-${group.color}` : 'border-border opacity-60'}`}>
-                                <button 
+                                <button
                                   onClick={() => setExpandedCardId(isExpanded ? null : cardId)}
                                   className="w-full p-4 text-left hover:bg-secondary/30 transition-all"
                                 >
@@ -1220,11 +1381,11 @@ export default function AdminDashboard() {
                                   </div>
                                   <div className="flex justify-between items-end">
                                     <p className="text-2xl font-black text-foreground">{resList.length}</p>
-                                    {source !== 'Admin' && <p className={`text-xs font-bold text-${group.color}`}>Bs. {money}</p>}
-                                    {source === 'Admin' && <p className="text-[10px] font-bold text-muted-foreground uppercase">Sin Costo</p>}
+                                    {source !== 'Invitados (Admin)' && <p className={`text-xs font-bold text-${group.color}`}>Bs. {money}</p>}
+                                    {source === 'Invitados (Admin)' && <p className="text-[10px] font-bold text-muted-foreground uppercase">Sin Costo</p>}
                                   </div>
                                 </button>
-                                
+
                                 {isExpanded && resList.length > 0 && (
                                   <div className="bg-secondary/30 border-t border-border p-3 animate-in fade-in slide-in-from-top-1">
                                     <div className="max-h-40 overflow-y-auto space-y-1">
@@ -1233,7 +1394,7 @@ export default function AdminDashboard() {
                                           <div className="flex justify-between font-bold">
                                             <span className="truncate">{r.guest_name || 'Comprador'}</span>
                                             <span className="text-primary shrink-0">
-                                              {source === 'Mesa' ? '' : `Bs. ${source === 'Admin' ? 0 : (r.ticket_types?.price || 0)}`}
+                                              {source === 'Mesa' ? '' : `Bs. ${source === 'Invitados (Admin)' ? 0 : (r.ticket_types?.price || 0)}`}
                                             </span>
                                           </div>
                                           <div className="flex justify-between items-center text-muted-foreground mt-0.5">
@@ -1243,7 +1404,7 @@ export default function AdminDashboard() {
                                             </div>
                                             <div className="flex flex-col items-end gap-1">
                                               <span className="italic">{r.rrpp?.name || (r.rrpp_id ? 'Puerta' : 'Directo')}</span>
-                                              <button 
+                                              <button
                                                 onClick={() => setViewingQR({ code: r.code, name: r.guest_name || 'Comprador' })}
                                                 className="flex items-center gap-1 text-[9px] font-bold text-primary hover:underline bg-primary/10 px-1.5 py-0.5 rounded-md"
                                               >
@@ -1275,7 +1436,7 @@ export default function AdminDashboard() {
         <div className="space-y-4">
           <div className="flex justify-between items-center">
             <h2 className="text-lg font-bold text-foreground">Gestión de Accesos (Escáneres)</h2>
-            <button 
+            <button
               onClick={() => setShowScannerForm(!showScannerForm)}
               className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-white shadow-glow transition-all"
             >
@@ -1287,11 +1448,11 @@ export default function AdminDashboard() {
             <div className="glass-card p-5 space-y-4 border-2 border-primary/20 animate-in fade-in zoom-in-95 duration-200">
               <div className="space-y-1">
                 <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Nombre del Punto de Acceso</label>
-                <input 
-                  placeholder="Ej: Puerta Principal, Entrada VIP" 
-                  value={scannerForm.name} 
-                  onChange={(e) => setScannerForm({ ...scannerForm, name: e.target.value })} 
-                  className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary" 
+                <input
+                  placeholder="Ej: Puerta Principal, Entrada VIP"
+                  value={scannerForm.name}
+                  onChange={(e) => setScannerForm({ ...scannerForm, name: e.target.value })}
+                  className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary"
                 />
               </div>
               <div className="space-y-2">
@@ -1306,11 +1467,10 @@ export default function AdminDashboard() {
                           : [...scannerForm.allowed_types, cat.name];
                         setScannerForm({ ...scannerForm, allowed_types: types });
                       }}
-                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${
-                        scannerForm.allowed_types.includes(cat.name) 
-                          ? 'bg-primary text-primary-foreground border-primary shadow-glow' 
+                      className={`px-3 py-1.5 rounded-lg text-[10px] font-black uppercase transition-all border ${scannerForm.allowed_types.includes(cat.name)
+                          ? 'bg-primary text-primary-foreground border-primary shadow-glow'
                           : 'bg-secondary text-muted-foreground border-border hover:text-foreground'
-                      }`}
+                        }`}
                     >
                       {cat.name}
                     </button>
@@ -1321,8 +1481,8 @@ export default function AdminDashboard() {
               </div>
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowScannerForm(false)} className="flex-1 rounded-xl bg-secondary py-3 text-sm font-bold">Cancelar</button>
-                <button 
-                  onClick={handleSaveScanner} 
+                <button
+                  onClick={handleSaveScanner}
                   disabled={savingScanner || !scannerForm.name}
                   className="flex-[2] rounded-xl bg-primary py-3 text-sm font-bold text-white disabled:opacity-50"
                 >
@@ -1351,7 +1511,7 @@ export default function AdminDashboard() {
                     )}
                   </div>
                 </div>
-                <button 
+                <button
                   onClick={() => handleDeleteScanner(s.id)}
                   className="p-2 rounded-lg text-muted-foreground hover:text-destructive hover:bg-destructive/10 opacity-0 group-hover:opacity-100 transition-all"
                 >
@@ -1373,13 +1533,13 @@ export default function AdminDashboard() {
             <h3 className="text-sm font-bold text-foreground mb-4">Maestro de Categorías de Entrada</h3>
             <div className="glass-card p-4 space-y-4">
               <div className="flex gap-2">
-                <input 
-                  placeholder="Nueva categoría (ej: VIP GOLD)" 
+                <input
+                  placeholder="Nueva categoría (ej: VIP GOLD)"
                   value={newCategoryName}
                   onChange={(e) => setNewCategoryName(e.target.value)}
                   className="flex-1 rounded-xl bg-secondary px-4 py-2 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary"
                 />
-                <button 
+                <button
                   onClick={handleAddCategory}
                   disabled={savingCategory || !newCategoryName.trim()}
                   className="rounded-xl bg-secondary px-4 py-2 text-sm font-bold text-primary hover:bg-primary/10 disabled:opacity-50"
@@ -1405,7 +1565,7 @@ export default function AdminDashboard() {
       {viewingQR && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm p-4 animate-in fade-in duration-200">
           <div className="glass-card w-full max-w-sm overflow-hidden border-2 border-primary/20 shadow-glow animate-in zoom-in-95 duration-200 relative">
-            <button 
+            <button
               onClick={() => setViewingQR(null)}
               className="absolute top-4 right-4 p-2 bg-secondary/80 rounded-full text-muted-foreground hover:text-foreground z-10"
             >
@@ -1427,7 +1587,7 @@ export default function AdminDashboard() {
               </p>
             </div>
             <div className="p-4 bg-secondary/50 flex justify-center">
-              <button 
+              <button
                 onClick={() => setViewingQR(null)}
                 className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-glow"
               >
@@ -1447,14 +1607,14 @@ export default function AdminDashboard() {
                 <CheckCircle className="h-6 w-6 text-success" />
                 <h3 className="text-xl font-black text-foreground">¡{bulkGeneratedTickets.length} Entradas Generadas!</h3>
               </div>
-              <button 
+              <button
                 onClick={() => setBulkGeneratedTickets(null)}
                 className="p-2 bg-background rounded-full text-muted-foreground hover:text-foreground"
               >
                 <X className="h-4 w-4" />
               </button>
             </div>
-            
+
             <div className="p-6 overflow-y-auto flex-1">
               <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-6">
                 {bulkGeneratedTickets.map(r => {
@@ -1466,18 +1626,18 @@ export default function AdminDashboard() {
                       <img src={eventImageUrl} alt="Event Background" crossOrigin="anonymous" className="absolute inset-0 w-full h-full object-cover transition-transform duration-700 group-hover:scale-110" />
                       {/* Gradient Overlay */}
                       <div className="absolute inset-0 bg-gradient-to-t from-black via-black/80 to-transparent" />
-                      
+
                       {/* Content */}
                       <div className="relative z-10 p-6 flex flex-col items-center justify-end h-full space-y-5">
                         <div className="text-center w-full">
                           <h4 className="text-xl font-black text-white leading-tight drop-shadow-md">{generatedEvent?.title || 'EVENTO'}</h4>
                           <p className="text-sm font-bold text-primary mt-1">{r.guest_name}</p>
                         </div>
-                        
+
                         <div className="p-3 bg-white rounded-2xl shadow-[0_0_30px_rgba(255,255,255,0.15)] w-44 h-44 flex items-center justify-center">
                           <QRCodeSVG value={r.code} size={150} level="H" includeMargin={false} className="w-full h-full" />
                         </div>
-                        
+
                         <div className="w-full text-center space-y-1.5 pt-2">
                           <p className="font-mono text-sm tracking-[0.3em] font-black text-white/90 bg-white/10 py-2 rounded-xl backdrop-blur-md">
                             {r.code}
@@ -1492,10 +1652,10 @@ export default function AdminDashboard() {
                 })}
               </div>
             </div>
-            
+
             <div className="p-4 border-t border-border bg-secondary/50 flex justify-end">
               <div className="flex gap-3 w-full sm:w-auto">
-                <button 
+                <button
                   onClick={handleShareTickets}
                   disabled={sharingTickets}
                   className="flex-1 sm:flex-none flex items-center justify-center gap-2 px-6 rounded-xl bg-success py-3 text-sm font-bold text-success-foreground shadow-glow hover:bg-success/90 transition-all disabled:opacity-50"
@@ -1503,7 +1663,7 @@ export default function AdminDashboard() {
                   {sharingTickets ? <Loader2 className="h-4 w-4 animate-spin" /> : <Share2 className="h-4 w-4" />}
                   {sharingTickets ? 'Generando...' : 'Compartir / Descargar QRs'}
                 </button>
-                <button 
+                <button
                   onClick={() => setBulkGeneratedTickets(null)}
                   className="px-6 rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-glow hover:bg-primary/90 transition-all"
                 >
