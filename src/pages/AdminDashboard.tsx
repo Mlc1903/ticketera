@@ -19,7 +19,7 @@ export default function AdminDashboard() {
   const { activeOrg, userRole, user } = useAuth();
   const orgId = activeOrg?.id;
   const { data: events, isLoading: eventsLoading } = useEvents(orgId);
-  const { data: reservations } = useReservations({});
+  const { data: reservations } = useReservations(orgId ? { organizationId: orgId } : undefined);
   const { data: orgMembers } = useOrgMembers(orgId);
   const { data: zones, isLoading: zonesLoading } = useZones(orgId);
   const queryClient = useQueryClient();
@@ -45,7 +45,7 @@ export default function AdminDashboard() {
   const [rrppZone, setRrppZone] = useState('');
   const [isTeamLeader, setIsTeamLeader] = useState(false);
   const [zoneVisibility, setZoneVisibility] = useState('all');
-  const [zoneCategory, setZoneCategory] = useState<'general' | 'vip'>('general');
+  const [zoneCategory, setZoneCategory] = useState<string>('');
   const [statusEventId, setStatusEventId] = useState<string | null>(null);
   const [statusMode, setStatusMode] = useState<'config' | 'status'>('config');
   const [selectedEventStatsId, setSelectedEventStatsId] = useState<string | null>(null);
@@ -76,9 +76,10 @@ export default function AdminDashboard() {
   const [bulkGeneratedTickets, setBulkGeneratedTickets] = useState<any[] | null>(null);
   const [sharingTickets, setSharingTickets] = useState(false);
 
-  const totalTickets = reservations?.length || 0;
-  const usedTickets = reservations?.filter((r: any) => r.status === 'used').length || 0;
-  const activeTickets = reservations?.filter((r: any) => r.status === 'active').length || 0;
+  const orgReservations = reservations || [];
+  const totalTickets = orgReservations.length;
+  const usedTickets = orgReservations.filter((r: any) => r.status === 'used').length;
+  const activeTickets = orgReservations.filter((r: any) => r.status === 'active').length;
 
   const adminMemberIds = orgMembers?.filter(m => m.role === 'admin' || m.role === 'owner').map(m => m.user_id) || [];
   if (userRole === 'super_admin' && user?.id) adminMemberIds.push(user.id);
@@ -369,7 +370,7 @@ export default function AdminDashboard() {
   };
 
   const handleCreateZone = async () => {
-    if (!zoneName || !zoneImageFile || !orgId) return;
+    if (!zoneName || !zoneImageFile || !zoneCategory || !orgId) return;
     setSavingZone(true);
     try {
       const fileName = `zone-${Math.random().toString(36).substring(2, 15)}`;
@@ -388,6 +389,7 @@ export default function AdminDashboard() {
       if (error) throw error;
       toast.success('Zona creada');
       setZoneName('');
+      setZoneCategory('');
       setZoneImageFile(null);
       setShowZoneForm(false);
       queryClient.invalidateQueries({ queryKey: ['organization_zones'] });
@@ -802,7 +804,38 @@ export default function AdminDashboard() {
                 {showTicketForm === ev.id && (
                   <div className="bg-secondary/30 p-3 rounded-xl space-y-3 mt-2 border border-border/50 animate-in slide-in-from-top-2">
                     <h4 className="text-[10px] font-black text-muted-foreground uppercase">Agregar Tipo de Entrada</h4>
-                    <input placeholder="Nombre (Ej: General, VIP)" value={ticketForm.name} onChange={(e) => setTicketForm({ ...ticketForm, name: e.target.value })} className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none focus:ring-1 focus:ring-primary" />
+                    <select
+                      value={ticketForm.name}
+                      onChange={(e) => {
+                        const selectedName = e.target.value;
+                        let inferredType = 'normal';
+                        if (selectedName.toUpperCase().includes('MESA')) {
+                          inferredType = 'mesa_vip';
+                        } else if (selectedName.toUpperCase().includes('VIP')) {
+                          inferredType = 'vip';
+                        } else if (selectedName.toUpperCase().includes('FREE') || selectedName.toUpperCase().includes('CORTESIA')) {
+                          inferredType = 'rrpp_free';
+                        }
+                        setTicketForm({ 
+                          ...ticketForm, 
+                          name: selectedName, 
+                          type: inferredType 
+                        });
+                      }}
+                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none focus:ring-1 focus:ring-primary text-foreground"
+                    >
+                      <option value="">Seleccionar Categoría (Ej: General, VIP)</option>
+                      {ticketCategories?.map((cat) => (
+                        <option key={cat.id} value={cat.name}>
+                          {cat.name}
+                        </option>
+                      ))}
+                      {ticketCategories?.length === 0 && (
+                        <option value="" disabled>
+                          No hay categorías creadas. Configúralas en la sección 'Accesos'.
+                        </option>
+                      )}
+                    </select>
                     <div className="grid grid-cols-2 gap-2">
                       <input type="number" placeholder="Precio (Bs)" value={ticketForm.price} onChange={(e) => setTicketForm({ ...ticketForm, price: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
                       <input type="number" placeholder="Stock" value={ticketForm.quantity} onChange={(e) => setTicketForm({ ...ticketForm, quantity: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
@@ -835,9 +868,22 @@ export default function AdminDashboard() {
                     <option value="rrpp_tl_only">Solo TLs</option>
                     <option value="admin_only">Solo Admin</option>
                   </select>
-                  <select value={zoneCategory} onChange={(e) => setZoneCategory(e.target.value as 'general' | 'vip')} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm">
-                    <option value="general">Categoría: General</option>
-                    <option value="vip">Categoría: VIP</option>
+                  <select 
+                    value={zoneCategory} 
+                    onChange={(e) => setZoneCategory(e.target.value)} 
+                    className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground"
+                  >
+                    <option value="">-- Seleccionar Categoría --</option>
+                    {ticketCategories?.map((cat) => (
+                      <option key={cat.id} value={cat.name}>
+                        Categoría: {cat.name}
+                      </option>
+                    ))}
+                    {ticketCategories?.length === 0 && (
+                      <option value="" disabled>
+                        No hay categorías creadas. Configúralas en la sección 'Accesos'.
+                      </option>
+                    )}
                   </select>
                   <button onClick={handleCreateZone} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white">Guardar</button>
                 </div>
@@ -1271,7 +1317,32 @@ export default function AdminDashboard() {
                     <div>
                       <p className="text-[10px] font-black text-primary uppercase tracking-wider">Recaudación Total</p>
                       <p className="text-3xl font-black text-foreground mt-1">
-                        Bs. {reservations?.filter(r => r.event_id === selectedEventStatsId && !r.guest_name && r.type !== 'rrpp_free' && r.type !== 'mesa_vip').reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0) || 0}
+                        Bs. {(() => {
+                          const eventRes = reservations?.filter(r => r.event_id === selectedEventStatsId) || [];
+                          const eventAssignments = rrppAssignments?.filter(a => !a.event_id || a.event_id === selectedEventStatsId) || [];
+                          
+                          const isMesa = (r: any) => r.type === 'mesa_vip';
+                          const isFreePass = (r: any) => r.type === 'rrpp_free';
+                          const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && !isMesa(r) && !isFreePass(r);
+                          const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
+                          const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && (!!r.guest_name || r.rrpp_id);
+
+                          return eventRes.reduce((acc, r) => {
+                            if (isFreePass(r) || isInvitado(r)) return acc;
+                            if (isMesa(r)) return acc;
+                            return acc + (r.ticket_types?.price || 0);
+                          }, 0) + (() => {
+                            const mesaRes = eventRes.filter(isMesa);
+                            const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id));
+                            return Array.from(uniqueTableIds).reduce((acc, tableId) => {
+                              if (!tableId) return acc;
+                              const zoneId = tableId.split(':')[0];
+                              const zone = zones?.find(z => z.id === zoneId);
+                              const tableData = (zone?.tables_data as ZoneTable[] || []).find((t: any) => t.id === tableId);
+                              return acc + (tableData?.price || 0);
+                            }, 0);
+                          })();
+                        })()}
                       </p>
                     </div>
                     <div className="text-right">
@@ -1293,36 +1364,32 @@ export default function AdminDashboard() {
                 const isMesa = (r: any) => r.type === 'mesa_vip';
                 const isFreePass = (r: any) => r.type === 'rrpp_free';
                 const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && !isMesa(r) && !isFreePass(r);
-                const isInvitado = (r: any) => !isRRPP(r) && !isMesa(r) && !isFreePass(r) && !!r.guest_name;
-                const isPuerta = (r: any) => !isRRPP(r) && !isMesa(r) && !isFreePass(r) && !r.guest_name;
+                const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
+                const isPuerta = (r: any) => r.guest_name === 'Venta Puerta';
+                const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
 
-                const processData = (groupName: 'general' | 'vip') => {
+                const getReservationCategory = (r: any) => {
+                  if (isMesa(r)) {
+                    const zoneId = r.zone_table_id?.split(':')[0];
+                    const zone = zones?.find(z => z.id === zoneId);
+                    return (zone?.category || 'general').toLowerCase();
+                  }
+                  if (r.rrpp_id) {
+                    const assignment = eventAssignments.find(a => a.user_id === r.rrpp_id);
+                    if (assignment?.zone_type) return assignment.zone_type.toLowerCase();
+                  }
+                  return (r.ticket_types?.name || 'general').toLowerCase();
+                };
+
+                const processData = (groupName: string) => {
                   const filtered = eventRes.filter(r => {
-                    if (isFreePass(r)) {
-                      if (r.rrpp_id) {
-                        const assignment = eventAssignments.find(a => a.user_id === r.rrpp_id);
-                        if (assignment) return (assignment.zone_type || 'general') === groupName;
-                      }
-                      return groupName === 'general';
-                    }
-
-                    if (isMesa(r)) {
-                      const zoneId = r.zone_table_id?.split(':')[0];
-                      const zone = zones?.find(z => z.id === zoneId);
-                      return (zone?.category || 'general') === groupName;
-                    }
-
-                    if (r.rrpp_id) {
-                      const assignment = eventAssignments.find(a => a.user_id === r.rrpp_id);
-                      if (assignment) return (assignment.zone_type || 'general') === groupName;
-                    }
-
-                    // Door / Direct / Admin
-                    return (r.ticket_types?.type === 'vip' ? 'vip' : 'general') === groupName;
+                    const category = getReservationCategory(r);
+                    return category === groupName;
                   });
 
                   const sources = {
                     'Invitados (Admin)': filtered.filter(isInvitado),
+                    'Compra en Línea': filtered.filter(isOnline),
                     'Free Pass': filtered.filter(isFreePass),
                     'Mesa': filtered.filter(isMesa),
                     'RRPP': filtered.filter(isRRPP),
@@ -1332,10 +1399,47 @@ export default function AdminDashboard() {
                   return { filtered, sources };
                 };
 
-                const groups = [
-                  { name: 'general', label: 'Sector General', data: processData('general'), color: 'primary' },
-                  { name: 'vip', label: 'Sector VIP', data: processData('vip'), color: 'warning' }
-                ];
+                // Build category list dynamically from config and reservations
+                const uniqueCategories = new Set<string>();
+                
+                // Add categories from organization ticket categories
+                ticketCategories?.forEach(c => {
+                  if (c.name) uniqueCategories.add(c.name.toLowerCase());
+                });
+
+                // Add categories from organization zones
+                zones?.forEach(z => {
+                  if (z.category) uniqueCategories.add(z.category.toLowerCase());
+                });
+
+                // Add categories from active reservations for this event
+                eventRes.forEach(r => {
+                  const cat = getReservationCategory(r);
+                  if (cat) uniqueCategories.add(cat.toLowerCase());
+                });
+
+                const categoryList = Array.from(uniqueCategories).sort((a, b) => {
+                  if (a === 'general') return -1;
+                  if (b === 'general') return 1;
+                  if (a === 'vip') return -1;
+                  if (b === 'vip') return 1;
+                  return a.localeCompare(b);
+                });
+
+                const getCategoryDisplayName = (nameLower: string) => {
+                  const tc = ticketCategories?.find(c => c.name.toLowerCase() === nameLower);
+                  if (tc) return tc.name;
+                  const z = zones?.find(zo => zo.category?.toLowerCase() === nameLower);
+                  if (z && z.category) return z.category;
+                  return nameLower.charAt(0).toUpperCase() + nameLower.slice(1);
+                };
+
+                const groups = categoryList.map(cat => ({
+                  name: cat,
+                  label: `Sector ${getCategoryDisplayName(cat)}`,
+                  data: processData(cat),
+                  color: cat.includes('vip') ? 'warning' : 'primary'
+                }));
 
                 return (
                   <div className="space-y-10">
@@ -1349,7 +1453,7 @@ export default function AdminDashboard() {
                           </span>
                         </div>
 
-                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-3 gap-4">
                           {Object.entries(group.data.sources).map(([source, resList]) => {
 
                             let money = 0;

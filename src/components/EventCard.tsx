@@ -31,7 +31,7 @@ export default function EventCard({ event, index }: { event: EventWithTickets; i
     >
       <Link to={`/evento/${event.id}`} className="block group">
         <div className="glass-card overflow-hidden transition-all hover:shadow-glow">
-          <div className="relative aspect-[16/9] overflow-hidden">
+          <div className="relative aspect-square overflow-hidden">
             <img
               src={imageUrl}
               alt={event.title}

@@ -6,6 +6,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import { useAuth } from '@/hooks/useAuth';
 import { OrganizationZone, ZoneTable } from '@/hooks/useSupabaseData';
+import pagoqr from '@/assets/pagoqr.jpeg';
 
 interface Props {
   eventId: string;
@@ -201,26 +202,31 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
         <p className="text-xs text-muted-foreground text-center">Escanea el QR para realizar la transferencia bancaria:</p>
         
         <div className="flex justify-center my-2">
-           <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagoMesa+EventSphere" alt="QR de Pago" className="rounded-xl ring-2 ring-primary max-w-[180px]" />
+           <img src={pagoqr} alt="QR de Pago" className="rounded-xl ring-2 ring-primary max-w-[180px]" />
         </div>
         
         <button 
            onClick={async () => {
-             const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagoMesa+EventSphere";
+             const qrUrl = pagoqr;
              try {
                const response = await fetch(qrUrl);
                const blob = await response.blob();
                const url = window.URL.createObjectURL(blob);
                const link = document.createElement('a');
                link.href = url;
-               link.download = 'QR_Pago_Banco.png';
+               link.download = 'QR_Pago_Banco.jpeg';
                document.body.appendChild(link);
                link.click();
                document.body.removeChild(link);
                window.URL.revokeObjectURL(url);
                setQrDownloaded(true);
              } catch (err) {
-               window.open(qrUrl, '_blank');
+               const link = document.createElement('a');
+               link.href = qrUrl;
+               link.download = 'QR_Pago_Banco.jpeg';
+               document.body.appendChild(link);
+               link.click();
+               document.body.removeChild(link);
                setQrDownloaded(true);
              }
            }}

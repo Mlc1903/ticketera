@@ -10,6 +10,7 @@ import { MapPin } from 'lucide-react';
 import { useEvent } from '@/hooks/useSupabaseData';
 import InteractiveMapSelector from './InteractiveMapSelector';
 import { useQueryClient } from '@tanstack/react-query';
+import pagoqr from '@/assets/pagoqr.jpeg';
 
 interface Props {
   ticketTypes: Tables<'ticket_types'>[];
@@ -204,19 +205,19 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
         <h3 className="text-lg font-bold text-foreground text-center">Realiza el Pago</h3>
         <p className="text-sm text-muted-foreground text-center">Escanea u obtén el Código QR a continuación para abonar *Bs. {total}*</p>
         <div className="flex justify-center my-4 relative">
-           <img src="https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagoEstandar+Ticket" alt="QR de Pago" className="rounded-xl ring-2 ring-primary max-w-[200px]" />
+           <img src={pagoqr} alt="QR de Pago" className="rounded-xl ring-2 ring-primary max-w-[200px]" />
         </div>
         
         <button 
            onClick={async () => {
-             const qrUrl = "https://api.qrserver.com/v1/create-qr-code/?size=250x250&data=PagoEstandar+Ticket";
+             const qrUrl = pagoqr;
              try {
                const response = await fetch(qrUrl);
                const blob = await response.blob();
                const blobUrl = URL.createObjectURL(blob);
                const link = document.createElement('a');
                link.href = blobUrl;
-               link.download = 'QR_Pago_Banco.png';
+               link.download = 'QR_Pago_Banco.jpeg';
                document.body.appendChild(link);
                link.click();
                document.body.removeChild(link);
@@ -226,8 +227,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
                // Failsafe por si hay bloqueo CORS
                const link = document.createElement('a');
                link.href = qrUrl;
-               link.target = "_blank";
-               link.download = 'QR_Pago_Banco.png';
+               link.download = 'QR_Pago_Banco.jpeg';
                document.body.appendChild(link);
                link.click();
                document.body.removeChild(link);

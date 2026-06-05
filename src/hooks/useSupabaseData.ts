@@ -45,19 +45,20 @@ export function useEvent(id: string | undefined) {
   });
 }
 
-export function useReservations(filters?: { eventId?: string; rrppId?: string; userId?: string }) {
+export function useReservations(filters?: { eventId?: string; rrppId?: string; userId?: string; organizationId?: string }) {
   return useQuery({
     queryKey: ['reservations', filters],
     queryFn: async () => {
       let query = supabase.from('reservations').select(`
         *,
         ticket_types (name, type, price),
-        events (title, date, time, location, image_url),
+        events!inner (title, date, time, location, image_url, organization_id),
         rrpp:profiles!rrpp_id (name)
       `);
       if (filters?.eventId) query = query.eq('event_id', filters.eventId);
       if (filters?.rrppId) query = query.eq('rrpp_id', filters.rrppId);
       if (filters?.userId) query = query.eq('user_id', filters.userId);
+      if (filters?.organizationId) query = query.eq('events.organization_id', filters.organizationId);
       const { data, error } = await query.order('created_at', { ascending: false });
       if (error) throw error;
       return data || [];
@@ -176,7 +177,7 @@ export interface OrganizationZone {
   organization_id: string;
   name: string;
   image_url: string;
-  category: 'general' | 'vip';
+  category: string;
   tables_data: ZoneTable[];
 }
 
