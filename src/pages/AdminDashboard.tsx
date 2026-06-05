@@ -61,6 +61,8 @@ export default function AdminDashboard() {
   const [showTicketForm, setShowTicketForm] = useState<string | null>(null);
   const [ticketForm, setTicketForm] = useState({ name: '', type: 'normal' as string, price: '', quantity: '' });
   const [savingTicket, setSavingTicket] = useState(false);
+  const [editingTicketTypeId, setEditingTicketTypeId] = useState<string | null>(null);
+  const [editTicketForm, setEditTicketForm] = useState({ name: '', type: 'normal' as string, price: '', quantity: '' });
 
   // Scanner form state
   const [showScannerForm, setShowScannerForm] = useState(false);
@@ -251,6 +253,46 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ['events'] });
     } catch (err: any) {
       toast.error(err.message || 'Error');
+    }
+    setSavingTicket(false);
+  };
+
+  const handleUpdateTicketType = async (id: string) => {
+    if (!editTicketForm.name) return;
+    setSavingTicket(true);
+    try {
+      const { error } = await supabase
+        .from('ticket_types')
+        .update({
+          name: editTicketForm.name,
+          type: editTicketForm.type as any,
+          price: parseFloat(editTicketForm.price) || 0,
+          quantity: parseInt(editTicketForm.quantity) || 0,
+        })
+        .eq('id', id);
+      if (error) throw error;
+      toast.success('Tipo de ticket actualizado');
+      setEditingTicketTypeId(null);
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al actualizar');
+    }
+    setSavingTicket(false);
+  };
+
+  const handleDeleteTicketType = async (id: string) => {
+    if (!confirm('¿Estás seguro de que deseas eliminar este tipo de entrada? Se borrarán todas las configuraciones asociadas.')) return;
+    setSavingTicket(true);
+    try {
+      const { error } = await supabase
+        .from('ticket_types')
+        .delete()
+        .eq('id', id);
+      if (error) throw error;
+      toast.success('Tipo de ticket eliminado');
+      queryClient.invalidateQueries({ queryKey: ['events'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al eliminar');
     }
     setSavingTicket(false);
   };
@@ -802,45 +844,141 @@ export default function AdminDashboard() {
                   </button>
                 </div>
                 {showTicketForm === ev.id && (
-                  <div className="bg-secondary/30 p-3 rounded-xl space-y-3 mt-2 border border-border/50 animate-in slide-in-from-top-2">
-                    <h4 className="text-[10px] font-black text-muted-foreground uppercase">Agregar Tipo de Entrada</h4>
-                    <select
-                      value={ticketForm.name}
-                      onChange={(e) => {
-                        const selectedName = e.target.value;
-                        let inferredType = 'normal';
-                        if (selectedName.toUpperCase().includes('MESA')) {
-                          inferredType = 'mesa_vip';
-                        } else if (selectedName.toUpperCase().includes('VIP')) {
-                          inferredType = 'vip';
-                        } else if (selectedName.toUpperCase().includes('FREE') || selectedName.toUpperCase().includes('CORTESIA')) {
-                          inferredType = 'rrpp_free';
-                        }
-                        setTicketForm({ 
-                          ...ticketForm, 
-                          name: selectedName, 
-                          type: inferredType 
-                        });
-                      }}
-                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none focus:ring-1 focus:ring-primary text-foreground"
-                    >
-                      <option value="">Seleccionar Categoría (Ej: General, VIP)</option>
-                      {ticketCategories?.map((cat) => (
-                        <option key={cat.id} value={cat.name}>
-                          {cat.name}
-                        </option>
-                      ))}
-                      {ticketCategories?.length === 0 && (
-                        <option value="" disabled>
-                          No hay categorías creadas. Configúralas en la sección 'Accesos'.
-                        </option>
-                      )}
-                    </select>
-                    <div className="grid grid-cols-2 gap-2">
-                      <input type="number" placeholder="Precio (Bs)" value={ticketForm.price} onChange={(e) => setTicketForm({ ...ticketForm, price: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
-                      <input type="number" placeholder="Stock" value={ticketForm.quantity} onChange={(e) => setTicketForm({ ...ticketForm, quantity: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
+                  <div className="bg-secondary/30 p-3 rounded-xl space-y-4 mt-2 border border-border/50 animate-in slide-in-from-top-2">
+                    {/* List of existing tickets */}
+                    {ev.ticket_types && ev.ticket_types.length > 0 && (
+                      <div className="space-y-2">
+                        <h4 className="text-[10px] font-black text-muted-foreground uppercase">Entradas Creadas</h4>
+                        <div className="space-y-2">
+                          {ev.ticket_types.map((tt: any) => {
+                            const isEditing = editingTicketTypeId === tt.id;
+                            return (
+                              <div key={tt.id} className="p-3 rounded-lg bg-background/50 border border-border/50 space-y-2">
+                                {isEditing ? (
+                                  <div className="space-y-2">
+                                    <select
+                                      value={editTicketForm.name}
+                                      onChange={(e) => {
+                                        const selectedName = e.target.value;
+                                        let inferredType = 'normal';
+                                        if (selectedName.toUpperCase().includes('MESA')) {
+                                          inferredType = 'mesa_vip';
+                                        } else if (selectedName.toUpperCase().includes('VIP')) {
+                                          inferredType = 'vip';
+                                        } else if (selectedName.toUpperCase().includes('FREE') || selectedName.toUpperCase().includes('CORTESIA')) {
+                                          inferredType = 'rrpp_free';
+                                        }
+                                        setEditTicketForm({ 
+                                          ...editTicketForm, 
+                                          name: selectedName, 
+                                          type: inferredType 
+                                        });
+                                      }}
+                                      className="w-full rounded-lg bg-background px-3 py-1.5 text-xs border border-border outline-none text-foreground"
+                                    >
+                                      <option value="">Seleccionar Categoría</option>
+                                      {ticketCategories?.map((cat) => (
+                                        <option key={cat.id} value={cat.name}>
+                                          {cat.name}
+                                        </option>
+                                      ))}
+                                    </select>
+                                    <div className="grid grid-cols-2 gap-2">
+                                      <div className="space-y-0.5">
+                                        <label className="text-[9px] text-muted-foreground uppercase font-bold ml-0.5">Precio (Bs)</label>
+                                        <input type="number" value={editTicketForm.price} onChange={(e) => setEditTicketForm({ ...editTicketForm, price: e.target.value })} className="w-full rounded-lg bg-background px-3 py-1.5 text-xs border border-border outline-none" />
+                                      </div>
+                                      <div className="space-y-0.5">
+                                        <label className="text-[9px] text-muted-foreground uppercase font-bold ml-0.5">Stock</label>
+                                        <input type="number" value={editTicketForm.quantity} onChange={(e) => setEditTicketForm({ ...editTicketForm, quantity: e.target.value })} className="w-full rounded-lg bg-background px-3 py-1.5 text-xs border border-border outline-none" />
+                                      </div>
+                                    </div>
+                                    <div className="flex gap-2 justify-end pt-1">
+                                      <button onClick={() => setEditingTicketTypeId(null)} className="rounded-lg bg-secondary px-3 py-1.5 text-[10px] font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
+                                      <button onClick={() => handleUpdateTicketType(tt.id)} className="rounded-lg bg-primary px-3 py-1.5 text-[10px] font-bold text-primary-foreground">Guardar</button>
+                                    </div>
+                                  </div>
+                                ) : (
+                                  <div className="flex justify-between items-center gap-4">
+                                    <div className="min-w-0 flex-1">
+                                      <div className="flex items-center gap-2 flex-wrap">
+                                        <span className="text-xs font-black text-foreground">{tt.name}</span>
+                                        <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary">{tt.type}</span>
+                                      </div>
+                                      <div className="text-[10px] text-muted-foreground mt-1 flex gap-2">
+                                        <span>Precio: <strong className="text-foreground">Bs. {tt.price}</strong></span>
+                                        <span>·</span>
+                                        <span>Stock: <strong className="text-foreground">{tt.sold} / {tt.quantity}</strong></span>
+                                      </div>
+                                    </div>
+                                    <div className="flex items-center gap-1.5">
+                                      <button 
+                                        onClick={() => { 
+                                          setEditingTicketTypeId(tt.id); 
+                                          setEditTicketForm({ name: tt.name, type: tt.type, price: tt.price.toString(), quantity: tt.quantity.toString() }); 
+                                        }} 
+                                        className="p-1.5 rounded bg-secondary hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
+                                        title="Editar"
+                                      >
+                                        <Edit className="h-3.5 w-3.5" />
+                                      </button>
+                                      <button 
+                                        onClick={() => handleDeleteTicketType(tt.id)} 
+                                        className="p-1.5 rounded bg-secondary hover:bg-destructive/15 text-muted-foreground hover:text-destructive transition-colors"
+                                        title="Eliminar"
+                                      >
+                                        <Trash2 className="h-3.5 w-3.5" />
+                                      </button>
+                                    </div>
+                                  </div>
+                                )}
+                              </div>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+
+                    <div className="border-t border-border/30 pt-3 space-y-3">
+                      <h4 className="text-[10px] font-black text-muted-foreground uppercase">Agregar Tipo de Entrada</h4>
+                      <select
+                        value={ticketForm.name}
+                        onChange={(e) => {
+                          const selectedName = e.target.value;
+                          let inferredType = 'normal';
+                          if (selectedName.toUpperCase().includes('MESA')) {
+                            inferredType = 'mesa_vip';
+                          } else if (selectedName.toUpperCase().includes('VIP')) {
+                            inferredType = 'vip';
+                          } else if (selectedName.toUpperCase().includes('FREE') || selectedName.toUpperCase().includes('CORTESIA')) {
+                            inferredType = 'rrpp_free';
+                          }
+                          setTicketForm({ 
+                            ...ticketForm, 
+                            name: selectedName, 
+                            type: inferredType 
+                          });
+                        }}
+                        className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none focus:ring-1 focus:ring-primary text-foreground"
+                      >
+                        <option value="">Seleccionar Categoría (Ej: General, VIP)</option>
+                        {ticketCategories?.map((cat) => (
+                          <option key={cat.id} value={cat.name}>
+                            {cat.name}
+                          </option>
+                        ))}
+                        {ticketCategories?.length === 0 && (
+                          <option value="" disabled>
+                            No hay categorías creadas. Configúralas en la sección 'Accesos'.
+                          </option>
+                        )}
+                      </select>
+                      <div className="grid grid-cols-2 gap-2">
+                        <input type="number" placeholder="Precio (Bs)" value={ticketForm.price} onChange={(e) => setTicketForm({ ...ticketForm, price: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
+                        <input type="number" placeholder="Stock" value={ticketForm.quantity} onChange={(e) => setTicketForm({ ...ticketForm, quantity: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
+                      </div>
+                      <button onClick={handleAddTicketType} className="w-full rounded-lg bg-primary py-2 text-xs font-bold text-primary-foreground hover:shadow-glow transition-all">Guardar Ticket</button>
                     </div>
-                    <button onClick={handleAddTicketType} className="w-full rounded-lg bg-primary py-2 text-xs font-bold text-primary-foreground hover:shadow-glow transition-all">Guardar Ticket</button>
                   </div>
                 )}
               </div>
