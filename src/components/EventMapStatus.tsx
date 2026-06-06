@@ -39,74 +39,6 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
     return reservations?.some(r => r.table_id === tableId && (r.status === 'active' || r.status === 'used'));
   };
 
-  const handleSellTable = async () => {
-    if (!selectedTable || !user) return;
-    setSelling(true);
-    try {
-      // 1. Find ticket type
-      let { data: ticketTypes } = await supabase
-        .from('ticket_types')
-        .select('*')
-        .eq('event_id', eventId)
-        .eq('type', 'mesa_vip')
-        .limit(1);
-      
-      let ticketType = ticketTypes?.[0];
-
-      if (!ticketType) {
-        const { data: anyTickets } = await supabase
-          .from('ticket_types')
-          .select('*')
-          .eq('event_id', eventId)
-          .limit(1);
-        ticketType = anyTickets?.[0];
-      }
-
-      if (!ticketType) {
-        throw new Error('Este evento no tiene tipos de entrada configurados.');
-      }
-
-      // 2. Create a purchase request instead of immediate reservation
-      const { error } = await supabase.from('purchase_requests' as any).insert({
-        event_id: eventId,
-        user_id: user.id,
-        total_amount: selectedTable.price || 0,
-        status: 'pending',
-        ticket_types: [{
-          ticket_type_id: ticketType.id,
-          name: `${selectedTable.label} - Mesa`,
-          price: selectedTable.price || 0,
-          quantity: 1, // One table
-          type: 'mesa_vip',
-          zone_table_id: selectedTable.id
-        }]
-      });
-
-      if (error) throw error;
-
-      // 3. Create a placeholder reservation with 'pending' status to block the table on the map
-      const { data: codeData } = await supabase.rpc('generate_ticket_code', { prefix: 'WAIT' });
-      await supabase.from('reservations').insert({
-        code: codeData || `P-${Date.now()}`,
-        event_id: eventId,
-        ticket_type_id: ticketType.id,
-        user_id: user.id,
-        guest_name: `${selectedTable.label} - ${guestName || 'Pendiente'}`,
-        type: 'mesa_vip',
-        quantity: selectedTable.tickets_included || 1,
-        table_id: selectedTable.id,
-        status: 'pending' // Important: pending status blocks it but doesn't activate it
-      });
-
-      toast.success(`Solicitud de mesa ${selectedTable.label} enviada. Espera la aprobación del pago.`);
-      setSelectedTable(null);
-      setGuestName('');
-      queryClient.invalidateQueries({ queryKey: ['table-reservations'] });
-    } catch (err: any) {
-      toast.error(err.message || 'Error al solicitar mesa');
-    }
-    setSelling(false);
-  };
 
   const [showPayment, setShowPayment] = useState(false);
   const [purchased, setPurchased] = useState(false);
@@ -116,20 +48,35 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
     if (!selectedTable || !user) return;
     setSelling(true);
     try {
-      let { data: ticketTypes } = await supabase
+      // 1. Find or create ticket type matching the zone category
+      const categoryName = zone.category || 'Mesa';
+      let { data: ticketTypesByCat } = await supabase
         .from('ticket_types')
         .select('*')
         .eq('event_id', eventId)
-        .eq('type', 'mesa_vip')
+        .ilike('name', categoryName)
         .limit(1);
+        
+      let ticketType = ticketTypesByCat?.[0];
       
-      let ticketType = ticketTypes?.[0];
       if (!ticketType) {
-        const { data: anyTickets } = await supabase.from('ticket_types').select('*').eq('event_id', eventId).limit(1);
-        ticketType = anyTickets?.[0];
+        // Automatically create the ticket type
+        const { data: newType, error: createError } = await supabase
+          .from('ticket_types')
+          .insert({
+            event_id: eventId,
+            name: categoryName,
+            type: 'mesa_vip',
+            price: selectedTable.price || 0,
+            quantity: 100, // Stock suitable for tables
+            only_admin: true // Hide from public list
+          })
+          .select()
+          .single();
+          
+        if (createError) throw createError;
+        ticketType = newType;
       }
-
-      if (!ticketType) throw new Error('No hay tipos de entrada configurados.');
 
       // Create purchase request
       const { error } = await supabase.from('purchase_requests' as any).insert({
@@ -160,6 +107,7 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
         type: 'mesa_vip',
         quantity: selectedTable.tickets_included || 1,
         table_id: selectedTable.id,
+        zone_table_id: selectedTable.id, // Write both!
         status: 'pending'
       });
 

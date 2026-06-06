@@ -44,18 +44,20 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
     });
   };
 
-  const total = ticketTypes.reduce((sum, tt) => sum + (quantities[tt.id] || 0) * tt.price, 0);
+  const visibleTicketTypes = ticketTypes.filter(tt => !tt.only_admin);
+
+  const total = visibleTicketTypes.reduce((sum, tt) => sum + (quantities[tt.id] || 0) * tt.price, 0);
   const totalQty = Object.values(quantities).reduce((s, q) => s + q, 0);
 
-  const hasFreePass = ticketTypes.some(tt => tt.type === 'rrpp_free' && (quantities[tt.id] || 0) > 0);
-  const hasPaidTicket = ticketTypes.some(tt => tt.type !== 'rrpp_free' && (quantities[tt.id] || 0) > 0);
+  const hasFreePass = visibleTicketTypes.some(tt => tt.type === 'rrpp_free' && (quantities[tt.id] || 0) > 0);
+  const hasPaidTicket = visibleTicketTypes.some(tt => tt.type !== 'rrpp_free' && (quantities[tt.id] || 0) > 0);
 
   const handleRequestPurchase = async () => {
     if (!user) return;
     setLoading(true);
 
     const isAutomatedFreePassActive = eventData?.organizations?.automated_free_pass;
-    const typesToRequest = ticketTypes
+    const typesToRequest = visibleTicketTypes
       .filter(tt => quantities[tt.id] > 0)
       .map(tt => ({
         ticket_type_id: tt.id,
@@ -264,7 +266,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
     <div className="glass-card p-4 space-y-4">
       <h3 className="text-base font-semibold text-foreground">Selecciona tus entradas</h3>
       <div className="space-y-3">
-        {ticketTypes.map((tt) => {
+        {visibleTicketTypes.map((tt) => {
           const available = tt.quantity - tt.sold;
           const qty = quantities[tt.id] || 0;
           const soldOut = available <= 0;
@@ -299,7 +301,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
       </div>
 
       {/* Map selector for VIP Tables if selected */}
-      {ticketTypes.some(tt => tt.type === 'mesa_vip' && (quantities[tt.id] || 0) > 0) && eventData?.organization_id && (
+      {visibleTicketTypes.some(tt => tt.type === 'mesa_vip' && (quantities[tt.id] || 0) > 0) && eventData?.organization_id && (
         <div className="mt-4 p-4 rounded-xl border border-warning bg-warning/5 space-y-3">
            <h4 className="font-semibold text-warning text-sm flex items-center gap-2">
              <MapPin className="h-4 w-4" /> Selección de Mesa VIP requerida
@@ -360,7 +362,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
                   setShowPayment(true);
                 }
               }}
-              disabled={loading || (ticketTypes.some(tt => tt.type === 'mesa_vip' && (quantities[tt.id] || 0) > 0) && !selectedTable)}
+              disabled={loading || (visibleTicketTypes.some(tt => tt.type === 'mesa_vip' && (quantities[tt.id] || 0) > 0) && !selectedTable)}
               className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40"
             >
               {asRRPP ? 'Registrar Venta de Entradas' : 'Reservar Entradas'}

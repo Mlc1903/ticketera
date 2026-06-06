@@ -7,7 +7,8 @@ import { Link } from 'react-router-dom';
 
 export default function MyTickets() {
   const { user } = useAuth();
-  const { data: reservations, isLoading, error } = useReservations({ userId: user?.id });
+  const { data: allReservations, isLoading, error } = useReservations({ userId: user?.id });
+  const reservations = allReservations?.filter((r: any) => r.status === 'active' || r.status === 'used') || [];
 
   if (!user) {
     return (
@@ -101,7 +102,16 @@ export default function MyTickets() {
                     <div>
                       <h2 className="font-bold text-white text-xl uppercase leading-tight tracking-wide">{event?.title || 'Evento'}</h2>
                       <p className="text-gray-300 mt-1">{event?.location || 'Ubicación no especificada'}</p>
-                      <p className="text-gray-300">{r.quantity || 1} entrada(s) - <span className="font-medium text-white uppercase">{r.type === 'mesa_vip' ? 'MESA VIP' : (r.ticket_types?.name || r.type?.replace('_', ' '))}</span></p>
+                      <p className="text-gray-300">{r.quantity || 1} entrada(s) - <span className="font-medium text-white uppercase">{r.type === 'mesa_vip' ? `MESA - ${(r.ticket_types?.name || 'VIP').toUpperCase()}` : (r.ticket_types?.name || r.type?.replace('_', ' '))}</span></p>
+                      {r.guest_name && (() => {
+                        const parts = r.guest_name.split(' - ');
+                        const displayName = parts.length >= 2 ? parts[1] : r.guest_name;
+                        return (
+                          <p className="text-sm text-gray-300 font-semibold mt-1">
+                            {displayName}
+                          </p>
+                        );
+                      })()}
                     </div>
                   </div>
 
@@ -123,7 +133,11 @@ export default function MyTickets() {
                   {/* Footer Data */}
                   <div className="space-y-1 pt-2">
                     <p className="text-white text-[15px]">
-                      <span className="font-bold">Fecha:</span> {event?.date ? new Date(event.date).toLocaleDateString('es-ES', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Por definir'}
+                      <span className="font-bold">Fecha:</span> {event?.date ? (() => {
+                        const [year, month, day] = event.date.split('-').map(Number);
+                        const localDate = new Date(year, month - 1, day);
+                        return localDate.toLocaleDateString('es-ES', { month: 'long', day: 'numeric', year: 'numeric' });
+                      })() : 'Por definir'}
                     </p>
                     <p className="text-white text-[15px]">
                       <span className="font-bold">Hora:</span> {event?.time ? event.time.substring(0, 5) : 'Por definir'}

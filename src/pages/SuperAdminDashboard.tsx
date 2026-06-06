@@ -164,7 +164,7 @@ export default function SuperAdminDashboard() {
            // ACTIVATE PENDING MESA
            const { data: existingPending } = await supabase
              .from('reservations')
-             .select('id')
+             .select('id, guest_name')
              .eq('event_id', req.event_id)
              .eq('table_id', tt.zone_table_id)
              .eq('status', 'pending')
@@ -174,11 +174,17 @@ export default function SuperAdminDashboard() {
              await supabase.from('reservations').delete().eq('id', existingPending.id);
            }
 
+           const baseGuestName = existingPending?.guest_name || `Mesa - ${req.buyerProfile?.name || 'Cliente'}`;
+
            for (let i = 0; i < finalQtyForMesa; i++) {
              const { data: codeData } = await supabase.rpc('generate_ticket_code', { 
                prefix: req.events.title.substring(0, 3).toUpperCase() 
              });
              const code = codeData || `TKT-${Date.now()}-${i}`;
+
+             const guestNameForTicket = finalQtyForMesa > 1
+               ? `${baseGuestName} - ${i+1}/${finalQtyForMesa}`
+               : baseGuestName;
 
              await supabase.from('reservations').insert({
                code,
@@ -186,7 +192,7 @@ export default function SuperAdminDashboard() {
                ticket_type_id: tt.ticket_type_id,
                user_id: req.user_id,
                rrpp_id: req.rrpp_id,
-               guest_name: `Mesa - ${req.buyerProfile?.name || 'Cliente'} - ${i+1}/${finalQtyForMesa}`,
+               guest_name: guestNameForTicket,
                type: 'mesa_vip',
                quantity: 1, // Individual ticket
                table_id: tt.zone_table_id,

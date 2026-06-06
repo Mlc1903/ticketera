@@ -856,34 +856,39 @@ export default function AdminDashboard() {
                               <div key={tt.id} className="p-3 rounded-lg bg-background/50 border border-border/50 space-y-2">
                                 {isEditing ? (
                                   <div className="space-y-2">
-                                    <select
-                                      value={editTicketForm.name}
-                                      onChange={(e) => {
-                                        const selectedName = e.target.value;
-                                        let inferredType = 'normal';
-                                        if (selectedName.toUpperCase().includes('MESA')) {
-                                          inferredType = 'mesa_vip';
-                                        } else if (selectedName.toUpperCase().includes('VIP')) {
-                                          inferredType = 'vip';
-                                        } else if (selectedName.toUpperCase().includes('FREE') || selectedName.toUpperCase().includes('CORTESIA')) {
-                                          inferredType = 'rrpp_free';
-                                        }
-                                        setEditTicketForm({ 
-                                          ...editTicketForm, 
-                                          name: selectedName, 
-                                          type: inferredType 
-                                        });
-                                      }}
-                                      className="w-full rounded-lg bg-background px-3 py-1.5 text-xs border border-border outline-none text-foreground"
-                                    >
-                                      <option value="">Seleccionar Categoría</option>
-                                      {ticketCategories?.map((cat) => (
-                                        <option key={cat.id} value={cat.name}>
-                                          {cat.name}
-                                        </option>
-                                      ))}
-                                    </select>
-                                    <div className="grid grid-cols-2 gap-2">
+                                    <div className="grid grid-cols-1 gap-2">
+                                      <div className="space-y-0.5">
+                                        <label className="text-[9px] text-muted-foreground uppercase font-bold ml-0.5">Categoría</label>
+                                        <select
+                                          value={editTicketForm.name}
+                                          onChange={(e) => {
+                                            const selectedName = e.target.value;
+                                            let inferredType = 'normal';
+                                            if (selectedName.toUpperCase().includes('MESA')) {
+                                              inferredType = 'mesa_vip';
+                                            } else if (selectedName.toUpperCase().includes('VIP')) {
+                                              inferredType = 'vip';
+                                            } else if (selectedName.toUpperCase().includes('FREE') || selectedName.toUpperCase().includes('CORTESIA')) {
+                                              inferredType = 'rrpp_free';
+                                            }
+                                            setEditTicketForm({ 
+                                              ...editTicketForm, 
+                                              name: selectedName, 
+                                              type: inferredType 
+                                            });
+                                          }}
+                                          className="w-full rounded-lg bg-background px-3 py-1.5 text-xs border border-border outline-none text-foreground"
+                                        >
+                                          <option value="">Seleccionar Categoría</option>
+                                          {ticketCategories?.map((cat) => (
+                                            <option key={cat.id} value={cat.name}>
+                                              {cat.name}
+                                            </option>
+                                          ))}
+                                        </select>
+                                      </div>
+                                    </div>
+                                    <div className="grid grid-cols-2 gap-2 mt-2">
                                       <div className="space-y-0.5">
                                         <label className="text-[9px] text-muted-foreground uppercase font-bold ml-0.5">Precio (Bs)</label>
                                         <input type="number" value={editTicketForm.price} onChange={(e) => setEditTicketForm({ ...editTicketForm, price: e.target.value })} className="w-full rounded-lg bg-background px-3 py-1.5 text-xs border border-border outline-none" />
@@ -941,38 +946,43 @@ export default function AdminDashboard() {
 
                     <div className="border-t border-border/30 pt-3 space-y-3">
                       <h4 className="text-[10px] font-black text-muted-foreground uppercase">Agregar Tipo de Entrada</h4>
-                      <select
-                        value={ticketForm.name}
-                        onChange={(e) => {
-                          const selectedName = e.target.value;
-                          let inferredType = 'normal';
-                          if (selectedName.toUpperCase().includes('MESA')) {
-                            inferredType = 'mesa_vip';
-                          } else if (selectedName.toUpperCase().includes('VIP')) {
-                            inferredType = 'vip';
-                          } else if (selectedName.toUpperCase().includes('FREE') || selectedName.toUpperCase().includes('CORTESIA')) {
-                            inferredType = 'rrpp_free';
-                          }
-                          setTicketForm({ 
-                            ...ticketForm, 
-                            name: selectedName, 
-                            type: inferredType 
-                          });
-                        }}
-                        className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none focus:ring-1 focus:ring-primary text-foreground"
-                      >
-                        <option value="">Seleccionar Categoría (Ej: General, VIP)</option>
-                        {ticketCategories?.map((cat) => (
-                          <option key={cat.id} value={cat.name}>
-                            {cat.name}
-                          </option>
-                        ))}
-                        {ticketCategories?.length === 0 && (
-                          <option value="" disabled>
-                            No hay categorías creadas. Configúralas en la sección 'Accesos'.
-                          </option>
-                        )}
-                      </select>
+                      <div className="grid grid-cols-1 gap-2">
+                        <div className="space-y-0.5">
+                          <label className="text-[9px] text-muted-foreground uppercase font-bold ml-0.5">Categoría</label>
+                          <select
+                            value={ticketForm.name}
+                            onChange={(e) => {
+                              const selectedName = e.target.value;
+                              let inferredType = 'normal';
+                              if (selectedName.toUpperCase().includes('MESA')) {
+                                inferredType = 'mesa_vip';
+                              } else if (selectedName.toUpperCase().includes('VIP')) {
+                                inferredType = 'vip';
+                              } else if (selectedName.toUpperCase().includes('FREE') || selectedName.toUpperCase().includes('CORTESIA')) {
+                                inferredType = 'rrpp_free';
+                              }
+                              setTicketForm({ 
+                                ...ticketForm, 
+                                name: selectedName, 
+                                type: inferredType 
+                              });
+                            }}
+                            className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none focus:ring-1 focus:ring-primary text-foreground"
+                          >
+                            <option value="">Seleccionar Categoría (Ej: General, VIP)</option>
+                            {ticketCategories?.map((cat) => (
+                              <option key={cat.id} value={cat.name}>
+                                {cat.name}
+                              </option>
+                            ))}
+                            {ticketCategories?.length === 0 && (
+                              <option value="" disabled>
+                                No hay categorías creadas. Configúralas en la sección 'Accesos'.
+                              </option>
+                            )}
+                          </select>
+                        </div>
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         <input type="number" placeholder="Precio (Bs)" value={ticketForm.price} onChange={(e) => setTicketForm({ ...ticketForm, price: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
                         <input type="number" placeholder="Stock" value={ticketForm.quantity} onChange={(e) => setTicketForm({ ...ticketForm, quantity: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
@@ -1471,13 +1481,18 @@ export default function AdminDashboard() {
                             return acc + (r.ticket_types?.price || 0);
                           }, 0) + (() => {
                             const mesaRes = eventRes.filter(isMesa);
-                            const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id));
+                            const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id).filter(Boolean));
                             return Array.from(uniqueTableIds).reduce((acc, tableId) => {
                               if (!tableId) return acc;
-                              const zoneId = tableId.split(':')[0];
-                              const zone = zones?.find(z => z.id === zoneId);
-                              const tableData = (zone?.tables_data as ZoneTable[] || []).find((t: any) => t.id === tableId);
-                              return acc + (tableData?.price || 0);
+                              let tablePrice = 0;
+                              for (const z of zones || []) {
+                                const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
+                                if (table) {
+                                  tablePrice = table.price || 0;
+                                  break;
+                                }
+                              }
+                              return acc + tablePrice;
                             }, 0);
                           })();
                         })()}
@@ -1508,8 +1523,10 @@ export default function AdminDashboard() {
 
                 const getReservationCategory = (r: any) => {
                   if (isMesa(r)) {
-                    const zoneId = r.zone_table_id?.split(':')[0];
-                    const zone = zones?.find(z => z.id === zoneId);
+                    const tableId = r.zone_table_id || r.table_id;
+                    const zone = zones?.find(z => 
+                      (z.tables_data as any[] || []).some(t => t.id === tableId)
+                    );
                     return (zone?.category || 'general').toLowerCase();
                   }
                   if (r.rrpp_id) {
@@ -1596,13 +1613,18 @@ export default function AdminDashboard() {
 
                             let money = 0;
                             if (source === 'Mesa') {
-                              const uniqueTableIds = new Set(resList.map(r => r.table_id || r.zone_table_id));
+                              const uniqueTableIds = new Set(resList.map(r => r.table_id || r.zone_table_id).filter(Boolean));
                               money = Array.from(uniqueTableIds).reduce((acc, tableId) => {
                                 if (!tableId) return acc;
-                                const zoneId = tableId.split(':')[0];
-                                const zone = zones?.find(z => z.id === zoneId);
-                                const tableData = (zone?.tables_data as ZoneTable[] || []).find((t: any) => t.id === tableId);
-                                return acc + (tableData?.price || 0);
+                                let tablePrice = 0;
+                                for (const z of zones || []) {
+                                  const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
+                                  if (table) {
+                                    tablePrice = table.price || 0;
+                                    break;
+                                  }
+                                }
+                                return acc + tablePrice;
                               }, 0);
                             } else {
                               money = resList.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
