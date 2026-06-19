@@ -72,7 +72,7 @@ export default function AdminDashboard() {
   const [newCategoryName, setNewCategoryName] = useState('');
   const [savingCategory, setSavingCategory] = useState(false);
   const [savingScanner, setSavingScanner] = useState(false);
-  const [bulkGenForm, setBulkGenForm] = useState({ eventId: '', guestName: '', quantity: '1' });
+  const [bulkGenForm, setBulkGenForm] = useState({ eventId: '', ticketTypeId: '', guestName: '', quantity: '1' });
   const [generatingBulk, setGeneratingBulk] = useState(false);
   const [viewingQR, setViewingQR] = useState<{ code: string, name: string } | null>(null);
   const [bulkGeneratedTickets, setBulkGeneratedTickets] = useState<any[] | null>(null);
@@ -481,9 +481,9 @@ export default function AdminDashboard() {
     }
   };
 
-  const handleBulkGenerate = async (category: 'general' | 'vip') => {
-    if (!bulkGenForm.eventId || !orgId) {
-      toast.error('Selecciona un evento primero');
+  const handleBulkGenerate = async () => {
+    if (!bulkGenForm.eventId || !bulkGenForm.ticketTypeId || !orgId) {
+      toast.error('Selecciona un evento y un tipo de entrada primero');
       return;
     }
     const qty = parseInt(bulkGenForm.quantity) || 1;
@@ -492,27 +492,25 @@ export default function AdminDashboard() {
     setGeneratingBulk(true);
     try {
       const event = events?.find(e => e.id === bulkGenForm.eventId);
-      const ticketType = event?.ticket_types?.find(t =>
-        category === 'vip'
-          ? (t.type === 'vip' || t.name.toLowerCase().includes('vip'))
-          : (t.type === 'normal' || t.name.toLowerCase().includes('general'))
-      );
+      const ticketType = event?.ticket_types?.find(t => t.id === bulkGenForm.ticketTypeId);
 
       if (!ticketType) {
-        toast.error(`No se encontró un tipo de entrada ${category} en este evento`);
+        toast.error(`No se encontró el tipo de entrada en este evento`);
         setGeneratingBulk(false);
         return;
       }
 
+      const categoryPrefix = ticketType.name.substring(0, 3).toUpperCase().replace(/\s/g, '');
+
       const reservations = [];
       for (let i = 0; i < qty; i++) {
-        const { data: code } = await supabase.rpc('generate_ticket_code', { prefix: category.toUpperCase() });
+        const { data: code } = await supabase.rpc('generate_ticket_code', { prefix: categoryPrefix });
         reservations.push({
-          code: code || `${category.toUpperCase()}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
+          code: code || `${categoryPrefix}-${Math.random().toString(36).substring(2, 8).toUpperCase()}`,
           event_id: bulkGenForm.eventId,
           ticket_type_id: ticketType.id,
-          guest_name: bulkGenForm.guestName || `Invitado ${category.toUpperCase()}`,
-          type: 'normal',
+          guest_name: bulkGenForm.guestName || `Invitado ${ticketType.name}`,
+          type: ticketType.type,
           status: 'active',
           quantity: 1,
           rrpp_id: user?.id
@@ -522,8 +520,8 @@ export default function AdminDashboard() {
       const { data, error } = await supabase.from('reservations').insert(reservations).select('*, ticket_types(name)');
       if (error) throw error;
 
-      toast.success(`${qty} entradas ${category.toUpperCase()} generadas con éxito`);
-      setBulkGenForm({ ...bulkGenForm, guestName: '', quantity: '1' });
+      toast.success(`${qty} entradas ${ticketType.name} generadas con éxito`);
+      setBulkGenForm({ ...bulkGenForm, guestName: '', quantity: '1', ticketTypeId: '' });
       setBulkGeneratedTickets(data);
       queryClient.invalidateQueries({ queryKey: ['reservations'] });
     } catch (err: any) {
@@ -1290,17 +1288,31 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
+                <div className="grid grid-cols-1 md:grid-cols-4 gap-4 mb-6">
                   <div className="space-y-1">
                     <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Evento</label>
                     <select
                       value={bulkGenForm.eventId}
-                      onChange={(e) => setBulkGenForm({ ...bulkGenForm, eventId: e.target.value })}
+                      onChange={(e) => setBulkGenForm({ ...bulkGenForm, eventId: e.target.value, ticketTypeId: '' })}
                       className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary appearance-none cursor-pointer"
                     >
                       <option value="">-- Seleccionar Evento --</option>
                       {events?.map(e => (
                         <option key={e.id} value={e.id}>{e.title}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="space-y-1">
+                    <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Tipo de Entrada</label>
+                    <select
+                      value={bulkGenForm.ticketTypeId}
+                      onChange={(e) => setBulkGenForm({ ...bulkGenForm, ticketTypeId: e.target.value })}
+                      disabled={!bulkGenForm.eventId}
+                      className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground outline-none ring-1 ring-border focus:ring-primary appearance-none cursor-pointer disabled:opacity-50"
+                    >
+                      <option value="">-- Seleccionar Tipo --</option>
+                      {events?.find(e => e.id === bulkGenForm.eventId)?.ticket_types?.map(t => (
+                        <option key={t.id} value={t.id}>{t.name} (Bs. {t.price})</option>
                       ))}
                     </select>
                   </div>
@@ -1326,29 +1338,14 @@ export default function AdminDashboard() {
                   </div>
                 </div>
 
-                <div className="grid grid-cols-2 gap-4">
-                  <button
-                    onClick={() => handleBulkGenerate('general')}
-                    disabled={generatingBulk || !bulkGenForm.eventId}
-                    className="group relative overflow-hidden rounded-2xl bg-secondary py-4 transition-all hover:bg-primary active:scale-95 disabled:opacity-50"
-                  >
-                    <div className="relative z-10 flex flex-col items-center gap-1">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground group-hover:text-primary-foreground/70">Sector</span>
-                      <span className="text-lg font-black text-foreground group-hover:text-primary-foreground">GENERAL</span>
-                    </div>
-                  </button>
-
-                  <button
-                    onClick={() => handleBulkGenerate('vip')}
-                    disabled={generatingBulk || !bulkGenForm.eventId}
-                    className="group relative overflow-hidden rounded-2xl bg-secondary py-4 transition-all hover:bg-warning active:scale-95 disabled:opacity-50"
-                  >
-                    <div className="relative z-10 flex flex-col items-center gap-1">
-                      <span className="text-[10px] font-black uppercase tracking-widest text-muted-foreground group-hover:text-warning-foreground/70">Sector</span>
-                      <span className="text-lg font-black text-foreground group-hover:text-warning-foreground">VIP</span>
-                    </div>
-                  </button>
-                </div>
+                <button
+                  onClick={handleBulkGenerate}
+                  disabled={generatingBulk || !bulkGenForm.eventId || !bulkGenForm.ticketTypeId}
+                  className="w-full rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground hover:shadow-glow transition-all active:scale-[0.98] disabled:opacity-40 flex items-center justify-center gap-2"
+                >
+                  <Ticket className="h-4 w-4" />
+                  {generatingBulk ? 'Generando...' : 'Generar Entradas'}
+                </button>
                 {generatingBulk && <div className="text-center text-xs text-primary mt-2 animate-pulse">Generando...</div>}
               </div>
 
