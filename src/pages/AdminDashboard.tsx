@@ -1892,7 +1892,9 @@ export default function AdminDashboard() {
                       <div className="relative z-10 p-6 flex flex-col items-center justify-end h-full space-y-5">
                         <div className="text-center w-full">
                           <h4 className="text-xl font-black text-white leading-tight drop-shadow-md">{generatedEvent?.title || 'EVENTO'}</h4>
-                          <p className="text-sm font-bold text-primary mt-1">{r.guest_name}</p>
+                          <span className="inline-block mt-2 px-3 py-1 rounded-full bg-white text-black text-xs font-extrabold shadow-md">
+                            {r.guest_name}
+                          </span>
                         </div>
 
                         <div className="p-3 bg-white rounded-2xl shadow-[0_0_30px_rgba(255,255,255,0.15)] w-44 h-44 flex items-center justify-center">
