@@ -1470,7 +1470,8 @@ export default function AdminDashboard() {
                           const isFreePass = (r: any) => r.type === 'rrpp_free';
                           const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && !isMesa(r) && !isFreePass(r);
                           const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
-                          const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && (!!r.guest_name || r.rrpp_id);
+                          const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+                          const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
 
                           return eventRes.reduce((acc, r) => {
                             if (isFreePass(r) || isInvitado(r)) return acc;
@@ -1515,7 +1516,7 @@ export default function AdminDashboard() {
                 const isFreePass = (r: any) => r.type === 'rrpp_free';
                 const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && !isMesa(r) && !isFreePass(r);
                 const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
-                const isPuerta = (r: any) => r.guest_name === 'Venta Puerta';
+                const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
                 const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
 
                 const getReservationCategory = (r: any) => {

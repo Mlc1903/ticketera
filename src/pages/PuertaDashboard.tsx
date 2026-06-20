@@ -59,6 +59,7 @@ export default function PuertaDashboard() {
           quantity: 1, // Generate single active ticket so Guardia can scan it
           status: 'active', 
           rrpp_id: user?.id, // Use door user id to track who sold it
+          guest_name: 'Venta Puerta',
         });
 
         if (error) throw error;
@@ -231,40 +232,50 @@ export default function PuertaDashboard() {
         </motion.div>
       )}
 
-      {/* Print View for 80mm Termal Printer */}
+      {/* Print View for 50x60mm Thermal Printer */}
       {generatedTickets && generatedTickets.length > 0 && (
         <div className="hidden print:block text-black bg-white">
           <style>{`
             @media print {
-              @page { margin: 0; size: 80mm auto; }
+              @page { margin: 0; size: 50mm 60mm; }
               body { background: white; margin: 0; padding: 0; }
               /* Force hide header if Layout logic missed it */
               header { display: none !important; }
               /* Force hide background */
               body::before { display: none !important; }
-              html, body { width: 80mm; min-height: 100vh; }
+              html, body { width: 50mm; margin: 0; padding: 0; }
             }
           `}</style>
           {generatedTickets.map((ticket, idx) => (
-            <div key={idx} className="flex flex-col items-center justify-center pt-8 pb-4 px-4 text-center font-mono w-[80mm] mx-auto" style={{ pageBreakAfter: 'always', breakAfter: 'page' }}>
+            <div 
+              key={idx} 
+              className="flex flex-col items-center justify-center p-1.5 text-center font-mono mx-auto" 
+              style={{ 
+                width: '50mm', 
+                height: '60mm', 
+                pageBreakAfter: 'always', 
+                breakAfter: 'page', 
+                boxSizing: 'border-box',
+                overflow: 'hidden'
+              }}
+            >
               <img 
                 src="https://res.cloudinary.com/dv8t8ym36/image/upload/f_auto,q_auto/NIGHTPASS_lkz1lb" 
                 alt="Logo" 
-                className="h-10 w-10 object-contain mb-2 grayscale"
+                className="h-6 w-6 object-contain mb-0.5 grayscale"
               />
-              <h1 className="text-base font-bold uppercase leading-tight mb-2 px-2">{selectedEvent?.title}</h1>
-              <p className="text-sm font-bold border-y border-black border-dashed py-1 w-full my-1">
+              <h1 className="text-[10px] font-bold uppercase leading-tight mb-0.5 px-1">{selectedEvent?.title}</h1>
+              <p className="text-[9px] font-bold border-y border-black border-dashed py-0.5 w-full my-0.5">
                 {ticket.typeName} - Bs. {ticket.price}
               </p>
               
-              <div className="my-3">
-                <QRCodeSVG value={ticket.code} size={160} level="H" />
+              <div className="my-0.5">
+                <QRCodeSVG value={ticket.code} size={80} level="H" />
               </div>
               
-              <p className="text-lg font-black tracking-widest my-1">{ticket.code}</p>
+              <p className="text-xs font-black tracking-widest my-0.5">{ticket.code}</p>
               
-              <div className="text-xs mt-2 mb-6">
-                <p>¡Gracias por tu compra!</p>
+              <div className="text-[7px] leading-tight">
                 <p>Presenta este código en puerta</p>
               </div>
             </div>
