@@ -31,6 +31,8 @@ export type Database = {
           rrpp_guests_per_promoter: number
           consumo_general_requirement: number
           consumo_vip_requirement: number
+          sales_general_requirement: number
+          sales_vip_requirement: number
           time: string
           title: string
           updated_at: string
@@ -51,6 +53,8 @@ export type Database = {
           rrpp_guests_per_promoter?: number
           consumo_general_requirement?: number
           consumo_vip_requirement?: number
+          sales_general_requirement?: number
+          sales_vip_requirement?: number
           time: string
           title: string
           updated_at?: string
@@ -71,6 +75,8 @@ export type Database = {
           rrpp_guests_per_promoter?: number
           consumo_general_requirement?: number
           consumo_vip_requirement?: number
+          sales_general_requirement?: number
+          sales_vip_requirement?: number
           time?: string
           title?: string
           updated_at?: string

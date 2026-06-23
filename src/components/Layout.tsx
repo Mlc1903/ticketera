@@ -1,13 +1,21 @@
-import { Link, useLocation } from 'react-router-dom';
+import { Link, useLocation, useNavigate } from 'react-router-dom';
 import { Calendar, Shield, Users, Ticket, Menu, X, LogIn, LogOut, Building2 } from 'lucide-react';
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useAuth } from '@/hooks/useAuth';
 
 export default function Layout({ children }: { children: React.ReactNode }) {
   const location = useLocation();
+  const navigate = useNavigate();
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
-  const { user, userRole, hasRole, userOrgs, activeOrg, setActiveOrg, signOut } = useAuth();
+  const { user, userRole, hasRole, userOrgs, activeOrg, setActiveOrg, signOut, isRecoveringPassword, setIsRecoveringPassword } = useAuth();
+
+  useEffect(() => {
+    if (isRecoveringPassword) {
+      setIsRecoveringPassword(false);
+      navigate('/login?reset=true');
+    }
+  }, [isRecoveringPassword, navigate, setIsRecoveringPassword]);
 
   const isOrgAdmin = activeOrg && (activeOrg.role === 'owner' || activeOrg.role === 'admin');
 

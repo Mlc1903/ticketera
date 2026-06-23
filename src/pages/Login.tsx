@@ -1,5 +1,5 @@
 import { useState, useEffect } from 'react';
-import { useNavigate } from 'react-router-dom';
+import { useNavigate, useSearchParams } from 'react-router-dom';
 import { motion } from 'framer-motion';
 import { Ticket, Mail, Lock, User, ArrowRight, Eye, EyeOff, RotateCcw } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
@@ -27,6 +27,8 @@ export default function Login() {
   });
 
   const navigate = useNavigate();
+  const [searchParams] = useSearchParams();
+  const isResetMode = searchParams.get('reset') === 'true';
 
   useEffect(() => {
     if (lockoutExpiration) {
@@ -59,6 +61,23 @@ export default function Login() {
     }
 
     setLoading(true);
+
+    if (isResetMode) {
+      if (password !== confirmPassword) {
+        toast.error('Las contraseñas no coinciden');
+        setLoading(false);
+        return;
+      }
+      const { error } = await supabase.auth.updateUser({ password });
+      if (error) {
+        toast.error(error.message);
+      } else {
+        toast.success('¡Contraseña actualizada con éxito!');
+        navigate('/');
+      }
+      setLoading(false);
+      return;
+    }
 
     if (forgotPassword) {
       const { error } = await supabase.auth.resetPasswordForEmail(email, {
@@ -124,19 +143,27 @@ export default function Login() {
           className="h-14 w-14 object-contain"
         />
         <h1 className="text-2xl font-black text-foreground">
-          {forgotPassword ? 'Recuperar Contraseña' : isSignUp ? 'Crear Cuenta' : 'Iniciar Sesión'}
+          {isResetMode 
+            ? 'Nueva Contraseña' 
+            : forgotPassword 
+              ? 'Recuperar Contraseña' 
+              : isSignUp 
+                ? 'Crear Cuenta' 
+                : 'Iniciar Sesión'}
         </h1>
         <p className="text-sm text-muted-foreground">
-          {forgotPassword 
-            ? 'Ingresa tu correo para recibir un enlace seguro'
-            : isSignUp 
-              ? 'Regístrate para comprar entradas' 
-              : 'Accede a tu cuenta NitePass'}
+          {isResetMode
+            ? 'Ingresa tu nueva contraseña para recuperar el acceso'
+            : forgotPassword 
+              ? 'Ingresa tu correo para recibir un enlace seguro'
+              : isSignUp 
+                ? 'Regístrate para comprar entradas' 
+                : 'Accede a tu cuenta NitePass'}
         </p>
       </div>
 
       <form onSubmit={handleSubmit} className="space-y-4">
-        {isSignUp && !forgotPassword && (
+        {!isResetMode && isSignUp && !forgotPassword && (
           <div className="relative">
             <User className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
@@ -149,24 +176,26 @@ export default function Login() {
             />
           </div>
         )}
-        <div className="relative">
-          <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-          <input
-            type="email"
-            placeholder="correo@ejemplo.com"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            required
-            className="w-full rounded-xl bg-secondary pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary transition-all"
-          />
-        </div>
+        {!isResetMode && (
+          <div className="relative">
+            <Mail className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
+            <input
+              type="email"
+              placeholder="correo@ejemplo.com"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              required
+              className="w-full rounded-xl bg-secondary pl-10 pr-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary transition-all"
+            />
+          </div>
+        )}
         
-        {!forgotPassword && (
+        {(isResetMode || !forgotPassword) && (
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type={showPassword ? 'text' : 'password'}
-              placeholder="Contraseña"
+              placeholder={isResetMode ? "Nueva Contraseña" : "Contraseña"}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               required
@@ -183,12 +212,12 @@ export default function Login() {
           </div>
         )}
         
-        {isSignUp && !forgotPassword && (
+        {(isResetMode || (isSignUp && !forgotPassword)) && (
           <div className="relative">
             <Lock className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
             <input
               type={showConfirmPassword ? 'text' : 'password'}
-              placeholder="Confirmar Contraseña"
+              placeholder={isResetMode ? "Confirmar Nueva Contraseña" : "Confirmar Contraseña"}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               required
@@ -205,7 +234,7 @@ export default function Login() {
           </div>
         )}
 
-        {!isSignUp && !forgotPassword && (
+        {!isResetMode && !isSignUp && !forgotPassword && (
           <div className="flex justify-end pr-1">
             <button
               type="button"
@@ -226,17 +255,26 @@ export default function Login() {
             ? 'Cargando...' 
             : isLocked 
               ? `Bloqueado (${lockoutRemainingMinutes}m)` 
-              : forgotPassword 
-                ? 'Enviar Instrucciones' 
-                : isSignUp 
-                  ? 'Crear Cuenta' 
-                  : 'Entrar'}
+              : isResetMode
+                ? 'Actualizar Contraseña'
+                : forgotPassword 
+                  ? 'Enviar Instrucciones' 
+                  : isSignUp 
+                    ? 'Crear Cuenta' 
+                    : 'Entrar'}
           {!loading && !isLocked && <ArrowRight className="h-4 w-4" />}
         </button>
       </form>
 
       <div className="text-center text-sm text-muted-foreground">
-        {forgotPassword ? (
+        {isResetMode ? (
+          <button
+            onClick={() => navigate('/login')}
+            className="flex items-center justify-center gap-2 mx-auto hover:text-foreground hover:underline transition-colors font-medium"
+          >
+            <RotateCcw className="h-3.5 w-3.5" /> Cancelar y volver
+          </button>
+        ) : forgotPassword ? (
           <button
             onClick={() => setForgotPassword(false)}
             className="flex items-center justify-center gap-2 mx-auto hover:text-foreground hover:underline transition-colors font-medium"

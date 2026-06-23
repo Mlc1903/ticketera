@@ -21,6 +21,8 @@ interface AuthContextType {
   userRoles: AppRole[];
   hasRole: (role: AppRole) => boolean;
   signOut: () => Promise<void>;
+  isRecoveringPassword: boolean;
+  setIsRecoveringPassword: (val: boolean) => void;
 }
 
 const AuthContext = createContext<AuthContextType>({
@@ -34,6 +36,8 @@ const AuthContext = createContext<AuthContextType>({
   userRoles: [],
   hasRole: () => false,
   signOut: async () => {},
+  isRecoveringPassword: false,
+  setIsRecoveringPassword: () => {},
 });
 
 export const useAuth = () => useContext(AuthContext);
@@ -46,13 +50,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userRoles, setUserRoles] = useState<AppRole[]>([]);
   const [userOrgs, setUserOrgs] = useState<OrgInfo[]>([]);
   const [activeOrg, setActiveOrg] = useState<OrgInfo | null>(null);
+  const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
 
   const hasRole = (role: AppRole) => userRoles.includes(role);
 
   useEffect(() => {
-    const { data: { subscription } } = supabase.auth.onAuthStateChange((_event, session) => {
+    const { data: { subscription } } = supabase.auth.onAuthStateChange((event, session) => {
       setSession(session);
       setUser(session?.user ?? null);
+      if (event === 'PASSWORD_RECOVERY') {
+        setIsRecoveringPassword(true);
+      }
       if (session?.user) {
         setTimeout(() => {
           fetchUserRole(session.user.id);
@@ -134,7 +142,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   };
 
   return (
-    <AuthContext.Provider value={{ user, session, loading, userRole, userRoles, hasRole, userOrgs, activeOrg, setActiveOrg, signOut }}>
+    <AuthContext.Provider value={{ user, session, loading, userRole, userRoles, hasRole, userOrgs, activeOrg, setActiveOrg, signOut, isRecoveringPassword, setIsRecoveringPassword }}>
       {children}
     </AuthContext.Provider>
   );

@@ -26,7 +26,7 @@ export default function AdminDashboard() {
 
   // Event form state
   const [showEventForm, setShowEventForm] = useState(false);
-  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' });
+  const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '', sales_general_requirement: '', sales_vip_requirement: '' });
   const [imageFile, setImageFile] = useState<File | null>(null);
   const [savingEvent, setSavingEvent] = useState(false);
   const [editEventId, setEditEventId] = useState<string | null>(null);
@@ -188,6 +188,8 @@ export default function AdminDashboard() {
           rrpp_vip_guests_per_promoter: parseInt(eventForm.rrpp_vip_guests_per_promoter as string) || 0,
           consumo_general_requirement: parseInt(eventForm.consumo_general_requirement as string) || 0,
           consumo_vip_requirement: parseInt(eventForm.consumo_vip_requirement as string) || 0,
+          sales_general_requirement: parseInt(eventForm.sales_general_requirement as string) || 0,
+          sales_vip_requirement: parseInt(eventForm.sales_vip_requirement as string) || 0,
           ...(uploadedImageUrl ? { image_url: uploadedImageUrl } : {}),
         }).eq('id', editEventId);
         if (error) throw error;
@@ -210,6 +212,8 @@ export default function AdminDashboard() {
           rrpp_vip_guests_per_promoter: parseInt(eventForm.rrpp_vip_guests_per_promoter as string) || 0,
           consumo_general_requirement: parseInt(eventForm.consumo_general_requirement as string) || 0,
           consumo_vip_requirement: parseInt(eventForm.consumo_vip_requirement as string) || 0,
+          sales_general_requirement: parseInt(eventForm.sales_general_requirement as string) || 0,
+          sales_vip_requirement: parseInt(eventForm.sales_vip_requirement as string) || 0,
           image_url: uploadedImageUrl,
         }).select().single();
         if (error) throw error;
@@ -224,7 +228,7 @@ export default function AdminDashboard() {
         }
         toast.success('Evento creado');
       }
-      setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' });
+      setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '', sales_general_requirement: '', sales_vip_requirement: '' });
       setImageFile(null);
       setShowEventForm(false);
       setEditEventId(null);
@@ -669,7 +673,7 @@ export default function AdminDashboard() {
 
       {tab === 'events' && (
         <div className="space-y-4">
-          <button onClick={() => { setEditEventId(null); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '' }); setShowEventForm(!showEventForm); }} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all">
+          <button onClick={() => { setEditEventId(null); setEventForm({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '', sales_general_requirement: '', sales_vip_requirement: '' }); setShowEventForm(!showEventForm); }} className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2.5 text-sm font-semibold text-primary-foreground hover:shadow-glow transition-all">
             <Plus className="h-4 w-4" /> {showEventForm ? 'Cerrar Formulario' : 'Crear Evento'}
           </button>
 
@@ -793,6 +797,35 @@ export default function AdminDashboard() {
                 </div>
               </div>
 
+              <div className="grid grid-cols-2 gap-4 p-4 bg-primary/5 rounded-xl border border-primary/20">
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-primary uppercase px-1">Meta Ventas General</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      placeholder="Ventas req."
+                      value={eventForm.sales_general_requirement}
+                      onChange={(e) => setEventForm({ ...eventForm, sales_general_requirement: e.target.value })}
+                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-primary/20 outline-none focus:ring-2 focus:ring-primary/20 text-foreground"
+                    />
+                    <Ticket className="h-4 w-4 text-primary shrink-0" />
+                  </div>
+                </div>
+                <div className="space-y-1">
+                  <label className="text-[10px] font-black text-warning uppercase px-1">Meta Ventas VIP</label>
+                  <div className="flex items-center gap-2">
+                    <input
+                      type="number"
+                      placeholder="Ventas req."
+                      value={eventForm.sales_vip_requirement}
+                      onChange={(e) => setEventForm({ ...eventForm, sales_vip_requirement: e.target.value })}
+                      className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-warning/20 outline-none focus:ring-2 focus:ring-warning/20 text-foreground"
+                    />
+                    <Ticket className="h-4 w-4 text-warning shrink-0" />
+                  </div>
+                </div>
+              </div>
+
               <div className="flex gap-3 pt-2">
                 <button onClick={() => setShowEventForm(false)} className="flex-1 rounded-xl bg-secondary py-3.5 text-sm font-bold text-foreground hover:bg-secondary/80 transition-all active:scale-[0.98]">Cancelar</button>
                 <button onClick={handleSaveEvent} disabled={savingEvent} className="flex-[2] rounded-xl bg-primary py-3.5 text-sm font-bold text-primary-foreground hover:shadow-glow transition-all active:scale-[0.98] disabled:opacity-50 flex items-center justify-center gap-2">
@@ -818,7 +851,9 @@ export default function AdminDashboard() {
                         rrpp_guests_per_promoter: ev.rrpp_guests_per_promoter?.toString() || '',
                         rrpp_vip_guests_per_promoter: (ev as any).rrpp_vip_guests_per_promoter?.toString() || '',
                         consumo_general_requirement: ev.consumo_general_requirement?.toString() || '',
-                        consumo_vip_requirement: ev.consumo_vip_requirement?.toString() || ''
+                        consumo_vip_requirement: ev.consumo_vip_requirement?.toString() || '',
+                        sales_general_requirement: (ev as any).sales_general_requirement?.toString() || '',
+                        sales_vip_requirement: (ev as any).sales_vip_requirement?.toString() || ''
                       } as any);
                       setShowEventForm(true);
                     }}
@@ -1201,27 +1236,49 @@ export default function AdminDashboard() {
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 animate-in fade-in slide-in-from-top-2">
                 <div className="p-4 bg-primary/5 rounded-xl border border-primary/20 space-y-2">
                   <p className="text-[10px] font-black text-primary uppercase">Meta RRPP General</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={events?.find(e => e.id === selectedConsumoEventId)?.consumo_general_requirement || 0}
-                      readOnly
-                      className="w-16 bg-background rounded-lg px-2 py-1.5 text-center font-bold text-sm border border-border"
-                    />
-                    <span className="text-xs text-muted-foreground">Check-ins requeridos</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={events?.find(e => e.id === selectedConsumoEventId)?.consumo_general_requirement || 0}
+                        readOnly
+                        className="w-12 bg-background rounded-lg px-2 py-1 text-center font-bold text-xs border border-border text-foreground"
+                      />
+                      <span className="text-[10px] text-muted-foreground">Check-ins</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={events?.find(e => e.id === selectedConsumoEventId)?.sales_general_requirement || 0}
+                        readOnly
+                        className="w-12 bg-background rounded-lg px-2 py-1 text-center font-bold text-xs border border-border text-foreground"
+                      />
+                      <span className="text-[10px] text-muted-foreground">Ventas</span>
+                    </div>
                   </div>
                   <p className="text-[9px] text-muted-foreground italic">* Configúralo al editar el evento</p>
                 </div>
                 <div className="p-4 bg-warning/5 rounded-xl border border-warning/20 space-y-2">
                   <p className="text-[10px] font-black text-warning uppercase">Meta RRPP VIP</p>
-                  <div className="flex items-center gap-2">
-                    <input
-                      type="number"
-                      value={events?.find(e => e.id === selectedConsumoEventId)?.consumo_vip_requirement || 0}
-                      readOnly
-                      className="w-16 bg-background rounded-lg px-2 py-1.5 text-center font-bold text-sm border border-border"
-                    />
-                    <span className="text-xs text-muted-foreground">Check-ins requeridos</span>
+                  <div className="grid grid-cols-2 gap-4">
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={events?.find(e => e.id === selectedConsumoEventId)?.consumo_vip_requirement || 0}
+                        readOnly
+                        className="w-12 bg-background rounded-lg px-2 py-1 text-center font-bold text-xs border border-border text-foreground"
+                      />
+                      <span className="text-[10px] text-muted-foreground">Check-ins</span>
+                    </div>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="number"
+                        value={events?.find(e => e.id === selectedConsumoEventId)?.sales_vip_requirement || 0}
+                        readOnly
+                        className="w-12 bg-background rounded-lg px-2 py-1 text-center font-bold text-xs border border-border text-foreground"
+                      />
+                      <span className="text-[10px] text-muted-foreground">Ventas</span>
+                    </div>
                   </div>
                   <p className="text-[9px] text-muted-foreground italic">* Configúralo al editar el evento</p>
                 </div>
@@ -1241,10 +1298,19 @@ export default function AdminDashboard() {
               <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
                 {rrppAssignments?.map(a => {
                   const checkins = reservations?.filter(r => r.event_id === selectedConsumoEventId && r.rrpp_id === a.user_id && r.status === 'used').length || 0;
+                  const sales = reservations?.filter(r => r.event_id === selectedConsumoEventId && r.rrpp_id === a.user_id && r.type !== 'rrpp_free').length || 0;
+                  
                   const goal = a.zone_type?.toLowerCase().includes('vip')
                     ? (events?.find(e => e.id === selectedConsumoEventId)?.consumo_vip_requirement || 0)
                     : (events?.find(e => e.id === selectedConsumoEventId)?.consumo_general_requirement || 0);
-                  const isQualified = goal > 0 && checkins >= goal;
+                  
+                  const salesGoal = a.zone_type?.toLowerCase().includes('vip')
+                    ? (events?.find(e => e.id === selectedConsumoEventId)?.sales_vip_requirement || 0)
+                    : (events?.find(e => e.id === selectedConsumoEventId)?.sales_general_requirement || 0);
+
+                  const isCheckinQualified = goal > 0 && checkins >= goal;
+                  const isSalesQualified = salesGoal > 0 && sales >= salesGoal;
+                  const isQualified = isCheckinQualified || isSalesQualified;
 
                   return (
                     <div key={a.id} className={`flex items-center justify-between p-3 rounded-xl transition-all border ${isQualified ? 'bg-success/5 border-success/20' : 'bg-secondary/50 border-border/50'}`}>
@@ -1260,9 +1326,20 @@ export default function AdminDashboard() {
                           </div>
                         </div>
                       </div>
-                      <div className="text-right">
-                        <p className={`text-lg font-black ${isQualified ? 'text-success' : 'text-foreground'}`}>{checkins} / {goal}</p>
-                        <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">{isQualified ? 'Habilitado' : 'Pendiente'}</p>
+                      <div className="flex gap-6 items-center">
+                        <div className="text-center">
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Ingresos</p>
+                          <p className={`text-sm font-black ${isCheckinQualified ? 'text-success' : 'text-foreground'}`}>{checkins} / {goal}</p>
+                        </div>
+                        <div className="text-center border-l border-border/50 pl-4">
+                          <p className="text-[9px] font-bold text-muted-foreground uppercase tracking-wider">Ventas</p>
+                          <p className={`text-sm font-black ${isSalesQualified ? 'text-primary' : 'text-foreground'}`}>{sales} / {salesGoal}</p>
+                        </div>
+                        <div className="text-right border-l border-border/50 pl-4 min-w-[70px]">
+                          <p className={`text-xs font-black ${isQualified ? 'text-success' : 'text-muted-foreground'}`}>
+                            {isQualified ? 'Habilitado' : 'Pendiente'}
+                          </p>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1471,7 +1548,7 @@ export default function AdminDashboard() {
                           
                           const isMesa = (r: any) => r.type === 'mesa_vip';
                           const isFreePass = (r: any) => r.type === 'rrpp_free';
-                          const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && !isMesa(r) && !isFreePass(r);
+                          const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
                           const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
                           const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
                           const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
@@ -1517,7 +1594,7 @@ export default function AdminDashboard() {
 
                 const isMesa = (r: any) => r.type === 'mesa_vip';
                 const isFreePass = (r: any) => r.type === 'rrpp_free';
-                const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && !isMesa(r) && !isFreePass(r);
+                const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
                 const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
                 const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
                 const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
