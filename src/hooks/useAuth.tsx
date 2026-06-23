@@ -49,8 +49,17 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   const [userRole, setUserRole] = useState<AppRole | null>(null);
   const [userRoles, setUserRoles] = useState<AppRole[]>([]);
   const [userOrgs, setUserOrgs] = useState<OrgInfo[]>([]);
-  const [activeOrg, setActiveOrg] = useState<OrgInfo | null>(null);
+  const [activeOrg, setActiveOrgState] = useState<OrgInfo | null>(null);
   const [isRecoveringPassword, setIsRecoveringPassword] = useState(false);
+
+  const setActiveOrg = (org: OrgInfo | null) => {
+    setActiveOrgState(org);
+    if (org) {
+      localStorage.setItem('active_org_id', org.id);
+    } else {
+      localStorage.removeItem('active_org_id');
+    }
+  };
 
   const hasRole = (role: AppRole) => userRoles.includes(role);
 
@@ -132,8 +141,19 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       role: m.role,
     }));
     setUserOrgs(orgs);
-    if (orgs.length > 0 && !activeOrg) {
-      setActiveOrg(orgs[0]);
+    
+    if (orgs.length > 0) {
+      const savedOrgId = localStorage.getItem('active_org_id');
+      const savedOrg = orgs.find(o => o.id === savedOrgId);
+      if (savedOrg) {
+        setActiveOrgState(savedOrg);
+      } else {
+        setActiveOrgState(orgs[0]);
+        localStorage.setItem('active_org_id', orgs[0].id);
+      }
+    } else {
+      setActiveOrgState(null);
+      localStorage.removeItem('active_org_id');
     }
   };
 
