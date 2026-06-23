@@ -73,7 +73,7 @@ export default function RRPPDashboard() {
           <div className="text-right">
             {assignments?.find(a => a.organization_id === activeEvent.organization_id)?.zone_type && (
               <span className={`text-[10px] font-black uppercase px-2 py-1 rounded-lg border ${
-                assignments.find(a => a.organization_id === activeEvent.organization_id)?.zone_type === 'vip' 
+                assignments.find(a => a.organization_id === activeEvent.organization_id)?.zone_type?.toLowerCase().includes('vip') 
                 ? 'bg-warning/20 text-warning border-warning/30' 
                 : 'bg-primary/20 text-primary border-primary/30'
               }`}>

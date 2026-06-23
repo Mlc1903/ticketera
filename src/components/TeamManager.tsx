@@ -147,7 +147,7 @@ export default function TeamManager({ organizationId }: Props) {
                 </div>
                 <div className="flex items-center gap-3">
                   {a.zone_type && (
-                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type === 'vip' ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-primary/20 text-primary border border-primary/30'}`}>
+                    <span className={`text-[8px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type?.toLowerCase().includes('vip') ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-primary/20 text-primary border border-primary/30'}`}>
                       {a.zone_type}
                     </span>
                   )}

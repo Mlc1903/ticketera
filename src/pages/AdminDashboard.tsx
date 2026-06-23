@@ -1082,8 +1082,11 @@ export default function AdminDashboard() {
                 className="rounded-lg bg-secondary px-3 py-2 text-xs border border-border focus:ring-1 focus:ring-primary outline-none"
               >
                 <option value="">Rango (Default)</option>
-                <option value="general">General</option>
-                <option value="vip">VIP</option>
+                {ticketCategories?.map((cat: any) => (
+                  <option key={cat.id} value={cat.name.toLowerCase()}>
+                    {cat.name}
+                  </option>
+                ))}
               </select>
             </div>
             <button onClick={handleAssignRRPP} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white hover:shadow-glow transition-all active:scale-[0.98]">Asignar</button>
@@ -1095,7 +1098,7 @@ export default function AdminDashboard() {
                   <div className="flex items-center gap-2">
                     <p className="text-sm font-bold">{a.profile?.name} {a.is_team_leader && '(TL)'}</p>
                     {a.zone_type && (
-                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type === 'vip' ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-primary/20 text-primary border border-primary/30'}`}>
+                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type?.toLowerCase().includes('vip') ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-primary/20 text-primary border border-primary/30'}`}>
                         {a.zone_type}
                       </span>
                     )}
@@ -1238,7 +1241,7 @@ export default function AdminDashboard() {
               <div className="space-y-2 max-h-[500px] overflow-y-auto pr-2">
                 {rrppAssignments?.map(a => {
                   const checkins = reservations?.filter(r => r.event_id === selectedConsumoEventId && r.rrpp_id === a.user_id && r.status === 'used').length || 0;
-                  const goal = a.zone_type === 'vip'
+                  const goal = a.zone_type?.toLowerCase().includes('vip')
                     ? (events?.find(e => e.id === selectedConsumoEventId)?.consumo_vip_requirement || 0)
                     : (events?.find(e => e.id === selectedConsumoEventId)?.consumo_general_requirement || 0);
                   const isQualified = goal > 0 && checkins >= goal;
@@ -1250,7 +1253,7 @@ export default function AdminDashboard() {
                         <div>
                           <p className="text-sm font-bold text-foreground">{a.profile?.name}</p>
                           <div className="flex items-center gap-2">
-                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type === 'vip' ? 'bg-warning/20 text-warning' : 'bg-primary/20 text-primary'}`}>
+                            <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type?.toLowerCase().includes('vip') ? 'bg-warning/20 text-warning' : 'bg-primary/20 text-primary'}`}>
                               {a.zone_type || 'General'}
                             </span>
                             {a.is_team_leader && <span className="text-[9px] font-black uppercase text-muted-foreground">TL</span>}

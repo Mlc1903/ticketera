@@ -40,7 +40,7 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true, r
   });
 
   // Use the correct guest limit based on RRPP zone
-  const isVipRrpp = rrppZoneType === 'vip';
+  const isVipRrpp = rrppZoneType?.toLowerCase().includes('vip');
   const guestLimit = isVipRrpp 
     ? ((eventData as any)?.rrpp_vip_guests_per_promoter || 0) 
     : (eventData?.rrpp_guests_per_promoter || 0);
