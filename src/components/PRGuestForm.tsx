@@ -83,6 +83,7 @@ export default function PRGuestForm({ eventId, eventTitle, allowGuests = true, r
         code,
         event_id: eventId,
         ticket_type_id: ticketType.id,
+        user_id: user.id,
         rrpp_id: user.id,
         guest_name: name,
         type: 'rrpp_free', // Keep as rrpp_free for tracking, scanner uses RRPP zone

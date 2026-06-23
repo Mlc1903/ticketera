@@ -174,7 +174,7 @@ export default function SuperAdminDashboard() {
              await supabase.from('reservations').delete().eq('id', existingPending.id);
            }
 
-           const baseGuestName = existingPending?.guest_name || `Mesa - ${req.buyerProfile?.name || 'Cliente'}`;
+           const baseGuestName = req.buyer_name || existingPending?.guest_name || `Mesa - ${req.buyerProfile?.name || 'Cliente'}`;
 
            for (let i = 0; i < finalQtyForMesa; i++) {
              const { data: codeData } = await supabase.rpc('generate_ticket_code', { 
@@ -214,7 +214,7 @@ export default function SuperAdminDashboard() {
               ticket_type_id: tt.ticket_type_id,
               user_id: req.user_id,
               rrpp_id: req.rrpp_id,
-              guest_name: req.buyerProfile?.name || 'Cliente',
+              guest_name: req.buyer_name || req.buyerProfile?.name || 'Cliente',
               type: tt.type,
               quantity: 1, // Individual ticket
               status: 'active'

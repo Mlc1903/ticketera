@@ -30,6 +30,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   const [selectedTable, setSelectedTable] = useState<{ id: string, zoneName: string, label: string } | null>(null);
   const [successMessage, setSuccessMessage] = useState<{ title: string, body: string } | null>(null);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
+  const [buyerName, setBuyerName] = useState('');
   
   const { user } = useAuth();
   const queryClient = useQueryClient();
@@ -132,6 +133,12 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
       }
 
       // 2. Normal Request flow for remaining tickets
+      if (asRRPP && !buyerName.trim()) {
+        toast.error("Debes ingresar el nombre del cliente");
+        setLoading(false);
+        return;
+      }
+
       if (!receiptImage) {
         toast.error("Debes adjuntar el comprobante de pago");
         setLoading(false);
@@ -158,6 +165,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
         event_id: eventId,
         user_id: user.id,
         rrpp_id: asRRPP ? user.id : null,
+        buyer_name: asRRPP ? buyerName.trim() : null,
         ticket_types: typesToRequest.map(tt => ({
           ...tt,
           zone_table_id: tt.type === 'mesa_vip' && selectedTable ? selectedTable.id : null
@@ -194,7 +202,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
             Ver mis Tickets
           </Link>
         </div>
-        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setReceiptImage(null); setQuantities({}); setSuccessMessage(null); }} className="w-full text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mt-2">
+        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setReceiptImage(null); setQuantities({}); setSuccessMessage(null); setBuyerName(''); }} className="w-full text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mt-2">
           Volver al Evento
         </button>
       </motion.div>
@@ -241,24 +249,37 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           <Download className="h-4 w-4" /> 1. Descargar QR
         </button>
 
-        <div className="mt-4 space-y-2">
-          <label className="text-sm font-semibold text-foreground">Sube tu comprobante de pago *</label>
-          <input 
-            type="file" 
-            accept="image/*" 
-            onChange={(e) => setReceiptImage(e.target.files?.[0] || null)}
-            className="w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
-          />
-        </div>
+         {asRRPP && (
+           <div className="mt-4 space-y-2">
+             <label className="text-sm font-semibold text-foreground">Nombre del Cliente / Destinatario *</label>
+             <input 
+               type="text" 
+               placeholder="Nombre completo del cliente"
+               className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary transition-all"
+               value={buyerName}
+               onChange={(e) => setBuyerName(e.target.value)}
+             />
+           </div>
+         )}
 
-        <button 
-           onClick={handleRequestPurchase}
-           disabled={loading || !qrDownloaded || !receiptImage}
-           className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 mt-4"
-        >
-          {loading ? 'Enviando...' : '2. Verificar Pago'}
-        </button>
-      </motion.div>
+         <div className="mt-4 space-y-2">
+           <label className="text-sm font-semibold text-foreground">Sube tu comprobante de pago *</label>
+           <input 
+             type="file" 
+             accept="image/*" 
+             onChange={(e) => setReceiptImage(e.target.files?.[0] || null)}
+             className="w-full text-sm text-muted-foreground file:mr-4 file:py-2 file:px-4 file:rounded-xl file:border-0 file:text-sm file:font-semibold file:bg-primary file:text-primary-foreground hover:file:bg-primary/90"
+           />
+         </div>
+
+         <button 
+            onClick={handleRequestPurchase}
+            disabled={loading || !qrDownloaded || !receiptImage || (asRRPP && !buyerName.trim())}
+            className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 mt-4"
+         >
+           {loading ? 'Enviando...' : '2. Verificar Pago'}
+         </button>
+       </motion.div>
     );
   }
 
