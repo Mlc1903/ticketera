@@ -308,6 +308,7 @@ export type Database = {
           sold: number
           type: Database["public"]["Enums"]["ticket_type"]
           only_admin: boolean
+          only_admin_exclusive: boolean
         }
         Insert: {
           created_at?: string
@@ -319,6 +320,7 @@ export type Database = {
           sold?: number
           type?: Database["public"]["Enums"]["ticket_type"]
           only_admin?: boolean
+          only_admin_exclusive?: boolean
         }
         Update: {
           created_at?: string
@@ -330,6 +332,7 @@ export type Database = {
           sold?: number
           type?: Database["public"]["Enums"]["ticket_type"]
           only_admin?: boolean
+          only_admin_exclusive?: boolean
         }
         Relationships: [
           {

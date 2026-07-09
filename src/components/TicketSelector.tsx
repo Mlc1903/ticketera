@@ -32,7 +32,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [buyerName, setBuyerName] = useState('');
   
-  const { user } = useAuth();
+  const { user, hasRole } = useAuth();
   const queryClient = useQueryClient();
   const { data: eventData } = useEvent(eventId);
 
@@ -45,7 +45,18 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
     });
   };
 
-  const visibleTicketTypes = ticketTypes.filter(tt => !tt.only_admin);
+  const isAdmin = !!(user && (hasRole('admin') || hasRole('super_admin')));
+  const isStaff = asRRPP || !!(user && (hasRole('admin') || hasRole('super_admin') || hasRole('rrpp')));
+  
+  const visibleTicketTypes = ticketTypes.filter(tt => {
+    if (tt.only_admin_exclusive) {
+      return isAdmin;
+    }
+    if (tt.only_admin) {
+      return isStaff;
+    }
+    return true;
+  });
 
   const total = visibleTicketTypes.reduce((sum, tt) => sum + (quantities[tt.id] || 0) * tt.price, 0);
   const totalQty = Object.values(quantities).reduce((s, q) => s + q, 0);

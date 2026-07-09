@@ -115,6 +115,8 @@ CREATE TABLE public.ticket_types (
   price DECIMAL(10,2) NOT NULL DEFAULT 0,
   quantity INTEGER NOT NULL DEFAULT 0,
   sold INTEGER NOT NULL DEFAULT 0,
+  only_admin BOOLEAN NOT NULL DEFAULT false,
+  only_admin_exclusive BOOLEAN NOT NULL DEFAULT false,
   created_at TIMESTAMPTZ NOT NULL DEFAULT now()
 );
 

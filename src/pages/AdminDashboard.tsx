@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap, QrCode, X, Share2 } from 'lucide-react';
+import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap, QrCode, X, Share2, Printer } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable, useScanners, useTicketCategories } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
@@ -9,6 +9,7 @@ import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
 import EventMapStatus from '@/components/EventMapStatus';
+import TicketSelector from '@/components/TicketSelector';
 import { Info } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
@@ -47,7 +48,7 @@ export default function AdminDashboard() {
   const [zoneVisibility, setZoneVisibility] = useState('all');
   const [zoneCategory, setZoneCategory] = useState<string>('');
   const [statusEventId, setStatusEventId] = useState<string | null>(null);
-  const [statusMode, setStatusMode] = useState<'config' | 'status'>('config');
+  const [statusMode, setStatusMode] = useState<'config' | 'tickets' | 'status'>('config');
   const [selectedEventStatsId, setSelectedEventStatsId] = useState<string | null>(null);
   const [selectedConsumoEventId, setSelectedConsumoEventId] = useState<string | null>(null);
   const [expandedCardId, setExpandedCardId] = useState<string | null>(null);
@@ -59,10 +60,10 @@ export default function AdminDashboard() {
 
   // Ticket type form state
   const [showTicketForm, setShowTicketForm] = useState<string | null>(null);
-  const [ticketForm, setTicketForm] = useState({ name: '', type: 'normal' as string, price: '', quantity: '' });
+  const [ticketForm, setTicketForm] = useState({ name: '', type: 'normal' as string, price: '', quantity: '', only_admin: false, only_admin_exclusive: false });
   const [savingTicket, setSavingTicket] = useState(false);
   const [editingTicketTypeId, setEditingTicketTypeId] = useState<string | null>(null);
-  const [editTicketForm, setEditTicketForm] = useState({ name: '', type: 'normal' as string, price: '', quantity: '' });
+  const [editTicketForm, setEditTicketForm] = useState({ name: '', type: 'normal' as string, price: '', quantity: '', only_admin: false, only_admin_exclusive: false });
 
   // Scanner form state
   const [showScannerForm, setShowScannerForm] = useState(false);
@@ -249,10 +250,12 @@ export default function AdminDashboard() {
         type: ticketForm.type as any,
         price: parseFloat(ticketForm.price) || 0,
         quantity: parseInt(ticketForm.quantity) || 0,
+        only_admin: ticketForm.only_admin,
+        only_admin_exclusive: ticketForm.only_admin_exclusive,
       });
       if (error) throw error;
       toast.success('Tipo de ticket agregado');
-      setTicketForm({ name: '', type: 'normal', price: '', quantity: '' });
+      setTicketForm({ name: '', type: 'normal', price: '', quantity: '', only_admin: false, only_admin_exclusive: false });
       setShowTicketForm(null);
       queryClient.invalidateQueries({ queryKey: ['events'] });
     } catch (err: any) {
@@ -272,6 +275,8 @@ export default function AdminDashboard() {
           type: editTicketForm.type as any,
           price: parseFloat(editTicketForm.price) || 0,
           quantity: parseInt(editTicketForm.quantity) || 0,
+          only_admin: editTicketForm.only_admin,
+          only_admin_exclusive: editTicketForm.only_admin_exclusive,
         })
         .eq('id', id);
       if (error) throw error;
@@ -618,9 +623,10 @@ export default function AdminDashboard() {
   };
 
   return (
-    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 max-w-4xl mx-auto">
-      <div>
-        <div className="flex items-center gap-2 text-sm text-primary font-semibold mb-1"><Shield className="h-4 w-4" />Panel Administrador</div>
+    <motion.div initial={{ opacity: 0 }} animate={{ opacity: 1 }} className="space-y-6 max-w-4xl mx-auto print:max-w-none print:w-full print:m-0 print:p-0 print:bg-white">
+      <div className="print:hidden space-y-6">
+        <div>
+          <div className="flex items-center gap-2 text-sm text-primary font-semibold mb-1"><Shield className="h-4 w-4" />Panel Administrador</div>
         <h1 className="text-2xl font-black text-foreground">{activeOrg?.name || 'Dashboard'}</h1>
       </div>
 
@@ -931,6 +937,27 @@ export default function AdminDashboard() {
                                         <input type="number" value={editTicketForm.quantity} onChange={(e) => setEditTicketForm({ ...editTicketForm, quantity: e.target.value })} className="w-full rounded-lg bg-background px-3 py-1.5 text-xs border border-border outline-none" />
                                       </div>
                                     </div>
+                                    <div className="grid grid-cols-1 gap-2 mt-2">
+                                      <div className="space-y-0.5">
+                                        <label className="text-[9px] text-muted-foreground uppercase font-bold ml-0.5">Quiénes pueden ver esta entrada</label>
+                                        <select
+                                          value={editTicketForm.only_admin_exclusive ? 'admin' : (editTicketForm.only_admin ? 'staff' : 'all')}
+                                          onChange={(e) => {
+                                            const val = e.target.value;
+                                            setEditTicketForm({
+                                              ...editTicketForm,
+                                              only_admin: val === 'staff' || val === 'admin',
+                                              only_admin_exclusive: val === 'admin'
+                                            });
+                                          }}
+                                          className="w-full rounded-lg bg-background px-3 py-1.5 text-xs border border-border outline-none text-foreground"
+                                        >
+                                          <option value="all">Todos (Admins, RRPP y Clientes)</option>
+                                          <option value="staff">Solo Admins y RRPP</option>
+                                          <option value="admin">Solo Admins</option>
+                                        </select>
+                                      </div>
+                                    </div>
                                     <div className="flex gap-2 justify-end pt-1">
                                       <button onClick={() => setEditingTicketTypeId(null)} className="rounded-lg bg-secondary px-3 py-1.5 text-[10px] font-bold text-muted-foreground hover:text-foreground">Cancelar</button>
                                       <button onClick={() => handleUpdateTicketType(tt.id)} className="rounded-lg bg-primary px-3 py-1.5 text-[10px] font-bold text-primary-foreground">Guardar</button>
@@ -942,6 +969,13 @@ export default function AdminDashboard() {
                                       <div className="flex items-center gap-2 flex-wrap">
                                         <span className="text-xs font-black text-foreground">{tt.name}</span>
                                         <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-primary/10 text-primary">{tt.type}</span>
+                                        {tt.only_admin_exclusive ? (
+                                          <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-red-500/10 text-red-500">Solo Admin</span>
+                                        ) : tt.only_admin ? (
+                                          <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-amber-500/10 text-amber-500">Solo Admin/RRPP</span>
+                                        ) : (
+                                          <span className="text-[9px] uppercase font-bold px-1.5 py-0.5 rounded bg-green-500/10 text-green-500">Todos</span>
+                                        )}
                                       </div>
                                       <div className="text-[10px] text-muted-foreground mt-1 flex gap-2">
                                         <span>Precio: <strong className="text-foreground">Bs. {tt.price}</strong></span>
@@ -953,7 +987,14 @@ export default function AdminDashboard() {
                                       <button 
                                         onClick={() => { 
                                           setEditingTicketTypeId(tt.id); 
-                                          setEditTicketForm({ name: tt.name, type: tt.type, price: tt.price.toString(), quantity: tt.quantity.toString() }); 
+                                          setEditTicketForm({ 
+                                            name: tt.name, 
+                                            type: tt.type, 
+                                            price: tt.price.toString(), 
+                                            quantity: tt.quantity.toString(),
+                                            only_admin: tt.only_admin || false,
+                                            only_admin_exclusive: tt.only_admin_exclusive || false
+                                          }); 
                                         }} 
                                         className="p-1.5 rounded bg-secondary hover:bg-primary/15 text-muted-foreground hover:text-primary transition-colors"
                                         title="Editar"
@@ -1020,6 +1061,25 @@ export default function AdminDashboard() {
                         <input type="number" placeholder="Precio (Bs)" value={ticketForm.price} onChange={(e) => setTicketForm({ ...ticketForm, price: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
                         <input type="number" placeholder="Stock" value={ticketForm.quantity} onChange={(e) => setTicketForm({ ...ticketForm, quantity: e.target.value })} className="rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none" />
                       </div>
+                      <div className="space-y-0.5">
+                        <label className="text-[9px] text-muted-foreground uppercase font-bold ml-0.5">Quiénes pueden ver esta entrada</label>
+                        <select
+                          value={ticketForm.only_admin_exclusive ? 'admin' : (ticketForm.only_admin ? 'staff' : 'all')}
+                          onChange={(e) => {
+                            const val = e.target.value;
+                            setTicketForm({
+                              ...ticketForm,
+                              only_admin: val === 'staff' || val === 'admin',
+                              only_admin_exclusive: val === 'admin'
+                            });
+                          }}
+                          className="w-full rounded-lg bg-background px-3 py-2 text-sm border border-border outline-none focus:ring-1 focus:ring-primary text-foreground"
+                        >
+                          <option value="all">Todos (Admins, RRPP y Clientes)</option>
+                          <option value="staff">Solo Admins y RRPP</option>
+                          <option value="admin">Solo Admins</option>
+                        </select>
+                      </div>
                       <button onClick={handleAddTicketType} className="w-full rounded-lg bg-primary py-2 text-xs font-bold text-primary-foreground hover:shadow-glow transition-all">Guardar Ticket</button>
                     </div>
                   </div>
@@ -1034,6 +1094,7 @@ export default function AdminDashboard() {
         <div className="space-y-4">
           <div className="flex gap-2 bg-secondary p-1 rounded-xl w-fit">
             <button onClick={() => setStatusMode('config')} className={`px-4 py-2 rounded-lg text-xs font-bold ${statusMode === 'config' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>CONFIG</button>
+            <button onClick={() => setStatusMode('tickets')} className={`px-4 py-2 rounded-lg text-xs font-bold ${statusMode === 'tickets' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>ENTRADAS</button>
             <button onClick={() => setStatusMode('status')} className={`px-4 py-2 rounded-lg text-xs font-bold ${statusMode === 'status' ? 'bg-background shadow-sm' : 'text-muted-foreground'}`}>ESTADO</button>
           </div>
           {statusMode === 'config' ? (
@@ -1089,6 +1150,37 @@ export default function AdminDashboard() {
                 </div>
               ))}
             </>
+          ) : statusMode === 'tickets' ? (
+            <div className="space-y-4 animate-in fade-in">
+              <select 
+                value={statusEventId || ''} 
+                onChange={(e) => setStatusEventId(e.target.value)} 
+                className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground border border-border outline-none focus:ring-1 focus:ring-primary"
+              >
+                <option value="">Seleccionar Evento</option>
+                {events?.map(e => <option key={e.id} value={e.id}>{e.title}</option>)}
+              </select>
+              {statusEventId && (
+                (() => {
+                  const selectedEvent = events?.find(e => e.id === statusEventId);
+                  if (!selectedEvent) return null;
+                  return (
+                    <div className="glass-card p-4 space-y-4">
+                      <div className="border-b border-border/50 pb-2">
+                        <h3 className="font-bold text-sm text-foreground">Vender Entradas - {selectedEvent.title}</h3>
+                        <p className="text-[10px] text-muted-foreground mt-0.5">Venta directa desde el panel de administración</p>
+                      </div>
+                      <TicketSelector 
+                        eventId={selectedEvent.id} 
+                        eventTitle={selectedEvent.title} 
+                        ticketTypes={selectedEvent.ticket_types || []} 
+                        asRRPP={true} 
+                      />
+                    </div>
+                  );
+                })()
+              )}
+            </div>
           ) : (
             <div className="space-y-4">
               <select onChange={(e) => setStatusEventId(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm">
@@ -1354,7 +1446,16 @@ export default function AdminDashboard() {
         <div className="space-y-4">
           {!selectedEventStatsId ? (
             <div className="space-y-4">
-              <h3 className="font-bold text-lg text-foreground px-1">Gestión por Evento</h3>
+              <div className="flex justify-between items-center px-1 mb-2">
+                <h3 className="font-bold text-lg text-foreground">Gestión por Evento</h3>
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-glow hover:bg-primary/95 transition-all print:hidden"
+                >
+                  <Printer className="h-4 w-4" />
+                  Descargar Reporte Global PDF
+                </button>
+              </div>
 
               {/* Quick Bulk Generation (Standalone) */}
               <div className="glass-card p-6 border-2 border-primary/10 shadow-glow-sm bg-primary/5">
@@ -1451,18 +1552,29 @@ export default function AdminDashboard() {
             </div>
           ) : (
             <div className="space-y-6">
-              <button
-                onClick={() => setSelectedEventStatsId(null)}
-                className="flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-primary transition-colors"
-              >
-                <ArrowLeft className="h-4 w-4" /> Volver a la lista
-              </button>
+              <div className="flex justify-between items-start flex-wrap gap-4">
+                <div className="space-y-3">
+                  <button
+                    onClick={() => setSelectedEventStatsId(null)}
+                    className="flex items-center gap-2 text-sm font-bold text-muted-foreground hover:text-primary transition-colors print:hidden"
+                  >
+                    <ArrowLeft className="h-4 w-4" /> Volver a la lista
+                  </button>
 
-              <div className="flex flex-col gap-1">
-                <h3 className="text-xl font-black text-foreground">
-                  {events?.find(e => e.id === selectedEventStatsId)?.title}
-                </h3>
-                <p className="text-sm text-muted-foreground">Gestión y Estadísticas por Sector</p>
+                  <div className="flex flex-col gap-1">
+                    <h3 className="text-xl font-black text-foreground">
+                      {events?.find(e => e.id === selectedEventStatsId)?.title}
+                    </h3>
+                    <p className="text-sm text-muted-foreground">Gestión y Estadísticas por Sector</p>
+                  </div>
+                </div>
+                <button
+                  onClick={() => window.print()}
+                  className="flex items-center gap-2 rounded-xl bg-primary px-4 py-2 text-sm font-bold text-primary-foreground shadow-glow hover:bg-primary/95 transition-all print:hidden"
+                >
+                  <Printer className="h-4 w-4" />
+                  Descargar Reporte PDF
+                </button>
               </div>
 
               {/* Summary Stats Grid */}
@@ -1546,7 +1658,7 @@ export default function AdminDashboard() {
                           const eventRes = reservations?.filter(r => r.event_id === selectedEventStatsId) || [];
                           const eventAssignments = rrppAssignments?.filter(a => !a.event_id || a.event_id === selectedEventStatsId) || [];
                           
-                          const isMesa = (r: any) => r.type === 'mesa_vip';
+                          const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
                           const isFreePass = (r: any) => r.type === 'rrpp_free';
                           const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
                           const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
@@ -1592,7 +1704,7 @@ export default function AdminDashboard() {
                 // Allow RRPP assignments that are org-wide (event_id is null) or specific to this event
                 const eventAssignments = rrppAssignments?.filter(a => !a.event_id || a.event_id === selectedEventStatsId) || [];
 
-                const isMesa = (r: any) => r.type === 'mesa_vip';
+                const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
                 const isFreePass = (r: any) => r.type === 'rrpp_free';
                 const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
                 const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
@@ -1602,14 +1714,14 @@ export default function AdminDashboard() {
                 const getReservationCategory = (r: any) => {
                   if (isMesa(r)) {
                     const tableId = r.zone_table_id || r.table_id;
-                    const zone = zones?.find(z => 
-                      (z.tables_data as any[] || []).some(t => t.id === tableId)
-                    );
-                    return (zone?.category || 'general').toLowerCase();
-                  }
-                  if (r.rrpp_id) {
-                    const assignment = eventAssignments.find(a => a.user_id === r.rrpp_id);
-                    if (assignment?.zone_type) return assignment.zone_type.toLowerCase();
+                    if (tableId) {
+                      const zone = zones?.find(z => 
+                        (z.tables_data as any[] || []).some(t => t.id === tableId)
+                      );
+                      if (zone?.category) {
+                        return zone.category.toLowerCase();
+                      }
+                    }
                   }
                   return (r.ticket_types?.name || 'general').toLowerCase();
                 };
@@ -2018,6 +2130,382 @@ export default function AdminDashboard() {
           </div>
         </div>
       )}
+
+      </div>
+
+      {/* GLOBAL REPORT PRINT TEMPLATE */}
+      <div className="hidden print:block text-black bg-white p-8 font-sans w-full max-w-none">
+        <div className="border-b-2 border-gray-900 pb-4 mb-6">
+          <div className="flex justify-between items-end">
+            <div>
+              <h1 className="text-2xl font-bold tracking-tight uppercase">Reporte de Gestión Global</h1>
+              <p className="text-sm text-gray-600 mt-1">Discoteca: <span className="font-semibold">{activeOrg?.name}</span></p>
+            </div>
+            <div className="text-right">
+              <p className="text-xs text-gray-500">Fecha de emisión: {new Date().toLocaleDateString('es-ES')} {new Date().toLocaleTimeString('es-ES')}</p>
+            </div>
+          </div>
+        </div>
+
+        <table className="w-full text-left border-collapse text-xs">
+          <thead>
+            <tr className="border-b-2 border-gray-800 bg-gray-100">
+              <th className="py-3 px-2 font-bold uppercase text-gray-700">Evento / Fecha</th>
+              <th className="py-3 px-2 font-bold uppercase text-gray-700 text-right">Venta Puerta</th>
+              <th className="py-3 px-2 font-bold uppercase text-gray-700 text-right">Venta Mesas</th>
+              <th className="py-3 px-2 font-bold uppercase text-gray-700 text-right">Online / RRPP</th>
+              <th className="py-3 px-2 font-bold uppercase text-gray-700 text-center">Cortesías</th>
+              <th className="py-3 px-2 font-bold uppercase text-gray-700 text-right">Ingreso Total</th>
+            </tr>
+          </thead>
+          <tbody>
+            {events?.map((ev) => {
+              const eventRes = reservations?.filter(r => r.event_id === ev.id) || [];
+              const eventAssignments = rrppAssignments?.filter(a => !a.event_id || a.event_id === ev.id) || [];
+
+              const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
+              const isFreePass = (r: any) => r.type === 'rrpp_free';
+              const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
+              const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
+              const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+              const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
+
+              const puertaTickets = eventRes.filter(isPuerta);
+              const puertaCount = puertaTickets.length;
+              const puertaRevenue = puertaTickets.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
+
+              const mesaRes = eventRes.filter(isMesa);
+              const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id).filter(Boolean));
+              const mesaCount = mesaRes.length;
+              const mesaRevenue = Array.from(uniqueTableIds).reduce((acc, tableId) => {
+                if (!tableId) return acc;
+                let tablePrice = 0;
+                for (const z of zones || []) {
+                  const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
+                  if (table) {
+                    tablePrice = table.price || 0;
+                    break;
+                  }
+                }
+                return acc + tablePrice;
+              }, 0);
+
+              const onlineRRPPTickets = eventRes.filter(r => isOnline(r) || isRRPP(r));
+              const onlineRRPPCount = onlineRRPPTickets.length;
+              const onlineRRPPRevenue = onlineRRPPTickets.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
+
+              const guestCount = eventRes.filter(r => isInvitado(r) || isFreePass(r)).length;
+              const eventTotal = puertaRevenue + mesaRevenue + onlineRRPPRevenue;
+
+              return (
+                <tr key={ev.id} className="border-b border-gray-200">
+                  <td className="py-3 px-2">
+                    <p className="font-bold text-gray-900">{ev.title}</p>
+                    <p className="text-[10px] text-gray-500 mt-0.5">{ev.date}</p>
+                  </td>
+                  <td className="py-3 px-2 text-right">
+                    <span className="font-medium">{puertaCount}</span>
+                    <span className="text-[10px] text-gray-500 block">Bs. {puertaRevenue}</span>
+                  </td>
+                  <td className="py-3 px-2 text-right">
+                    <span className="font-medium">{mesaCount}</span>
+                    <span className="text-[10px] text-gray-500 block">Bs. {mesaRevenue}</span>
+                  </td>
+                  <td className="py-3 px-2 text-right">
+                    <span className="font-medium">{onlineRRPPCount}</span>
+                    <span className="text-[10px] text-gray-500 block">Bs. {onlineRRPPRevenue}</span>
+                  </td>
+                  <td className="py-3 px-2 text-center font-medium">{guestCount}</td>
+                  <td className="py-3 px-2 text-right font-bold text-gray-900">Bs. {eventTotal}</td>
+                </tr>
+              );
+            })}
+
+            {/* Total Row */}
+            {(() => {
+              let totalPuertaCount = 0;
+              let totalPuertaRevenue = 0;
+              let totalMesaCount = 0;
+              let totalMesaRevenue = 0;
+              let totalOnlineRRPPCount = 0;
+              let totalOnlineRRPPRevenue = 0;
+              let totalGuestCount = 0;
+              let grandTotalRevenue = 0;
+
+              events?.forEach((ev) => {
+                const eventRes = reservations?.filter(r => r.event_id === ev.id) || [];
+                const eventAssignments = rrppAssignments?.filter(a => !a.event_id || a.event_id === ev.id) || [];
+
+                const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
+                const isFreePass = (r: any) => r.type === 'rrpp_free';
+                const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
+                const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
+                const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+                const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
+
+                const puertaTickets = eventRes.filter(isPuerta);
+                totalPuertaCount += puertaTickets.length;
+                totalPuertaRevenue += puertaTickets.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
+
+                const mesaRes = eventRes.filter(isMesa);
+                const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id).filter(Boolean));
+                totalMesaCount += mesaRes.length;
+                totalMesaRevenue += Array.from(uniqueTableIds).reduce((acc, tableId) => {
+                  if (!tableId) return acc;
+                  let tablePrice = 0;
+                  for (const z of zones || []) {
+                    const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
+                    if (table) {
+                      tablePrice = table.price || 0;
+                      break;
+                    }
+                  }
+                  return acc + tablePrice;
+                }, 0);
+
+                const onlineRRPPTickets = eventRes.filter(r => isOnline(r) || isRRPP(r));
+                totalOnlineRRPPCount += onlineRRPPTickets.length;
+                totalOnlineRRPPRevenue += onlineRRPPTickets.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
+
+                totalGuestCount += eventRes.filter(r => isInvitado(r) || isFreePass(r)).length;
+              });
+
+              grandTotalRevenue = totalPuertaRevenue + totalMesaRevenue + totalOnlineRRPPRevenue;
+
+              return (
+                <tr className="border-t-2 border-gray-800 bg-gray-100 font-bold text-gray-900">
+                  <td className="py-3 px-2 uppercase">Totales Consolidados</td>
+                  <td className="py-3 px-2 text-right">
+                    <span>{totalPuertaCount}</span>
+                    <span className="text-[10px] block">Bs. {totalPuertaRevenue}</span>
+                  </td>
+                  <td className="py-3 px-2 text-right">
+                    <span>{totalMesaCount}</span>
+                    <span className="text-[10px] block">Bs. {totalMesaRevenue}</span>
+                  </td>
+                  <td className="py-3 px-2 text-right">
+                    <span>{totalOnlineRRPPCount}</span>
+                    <span className="text-[10px] block">Bs. {totalOnlineRRPPRevenue}</span>
+                  </td>
+                  <td className="py-3 px-2 text-center">{totalGuestCount}</td>
+                  <td className="py-3 px-2 text-right text-sm">Bs. {grandTotalRevenue}</td>
+                </tr>
+              );
+            })()}
+          </tbody>
+        </table>
+      </div>
+
+      {/* INDIVIDUAL EVENT REPORT PRINT TEMPLATE */}
+      <div className="hidden print:block text-black bg-white p-8 font-sans w-full max-w-none">
+        {(() => {
+          if (!selectedEventStatsId) return null;
+          const ev = events?.find(e => e.id === selectedEventStatsId);
+          if (!ev) return null;
+
+          const eventRes = reservations?.filter(r => r.event_id === ev.id) || [];
+          const eventAssignments = rrppAssignments?.filter(a => !a.event_id || a.event_id === ev.id) || [];
+
+          const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
+          const isFreePass = (r: any) => r.type === 'rrpp_free';
+          const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
+          const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
+          const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+          const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
+
+          const getReservationCategory = (r: any) => {
+            if (isMesa(r)) {
+              const tableId = r.zone_table_id || r.table_id;
+              if (tableId) {
+                const zone = zones?.find(z => 
+                  (z.tables_data as any[] || []).some(t => t.id === tableId)
+                );
+                if (zone?.category) {
+                  return zone.category.toLowerCase();
+                }
+              }
+            }
+            return (r.ticket_types?.name || 'general').toLowerCase();
+          };
+
+          const processData = (groupName: string) => {
+            const filtered = eventRes.filter(r => {
+              const category = getReservationCategory(r);
+              return category === groupName;
+            });
+
+            const sources = {
+              'Invitados (Admin)': filtered.filter(isInvitado),
+              'Compra en Línea': filtered.filter(isOnline),
+              'Free Pass': filtered.filter(isFreePass),
+              'Mesa': filtered.filter(isMesa),
+              'RRPP': filtered.filter(isRRPP),
+              'Puerta': filtered.filter(isPuerta)
+            };
+
+            return { filtered, sources };
+          };
+
+          const uniqueCategories = new Set<string>();
+          ticketCategories?.forEach(c => {
+            if (c.name) uniqueCategories.add(c.name.toLowerCase());
+          });
+          zones?.forEach(z => {
+            if (z.category) uniqueCategories.add(z.category.toLowerCase());
+          });
+          eventRes.forEach(r => {
+            const cat = getReservationCategory(r);
+            if (cat) uniqueCategories.add(cat.toLowerCase());
+          });
+
+          const categoryList = Array.from(uniqueCategories).sort((a, b) => {
+            if (a === 'general') return -1;
+            if (b === 'general') return 1;
+            if (a === 'vip') return -1;
+            if (b === 'vip') return 1;
+            return a.localeCompare(b);
+          });
+
+          const getCategoryDisplayName = (nameLower: string) => {
+            const tc = ticketCategories?.find(c => c.name.toLowerCase() === nameLower);
+            if (tc) return tc.name;
+            const z = zones?.find(zo => zo.category?.toLowerCase() === nameLower);
+            if (z && z.category) return z.category;
+            return nameLower.charAt(0).toUpperCase() + nameLower.slice(1);
+          };
+
+          const groups = categoryList.map(cat => ({
+            name: cat,
+            label: `Sector ${getCategoryDisplayName(cat)}`,
+            data: processData(cat)
+          }));
+
+          // Overall calculations
+          const totalTicketsCount = eventRes.length;
+          const totalCheckins = eventRes.filter(r => r.status === 'used').length;
+          const totalNoCheckins = eventRes.filter(r => r.status === 'active').length;
+
+          const totalRevenue = eventRes.reduce((acc, r) => {
+            if (isFreePass(r) || isInvitado(r)) return acc;
+            if (isMesa(r)) return acc;
+            return acc + (r.ticket_types?.price || 0);
+          }, 0) + (() => {
+            const mesaRes = eventRes.filter(isMesa);
+            const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id).filter(Boolean));
+            return Array.from(uniqueTableIds).reduce((acc, tableId) => {
+              if (!tableId) return acc;
+              let tablePrice = 0;
+              for (const z of zones || []) {
+                const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
+                if (table) {
+                  tablePrice = table.price || 0;
+                  break;
+                }
+              }
+              return acc + tablePrice;
+            }, 0);
+          })();
+
+          return (
+            <div>
+              {/* Header */}
+              <div className="border-b-2 border-gray-900 pb-4 mb-6">
+                <div className="flex justify-between items-end">
+                  <div>
+                    <h1 className="text-2xl font-bold tracking-tight uppercase">Reporte de Evento</h1>
+                    <h2 className="text-lg font-bold text-gray-800 mt-1">{ev.title}</h2>
+                    <p className="text-xs text-gray-600 mt-0.5">Fecha: {ev.date} · Lugar: {ev.location} · Discoteca: {activeOrg?.name}</p>
+                  </div>
+                  <div className="text-right">
+                    <p className="text-xs text-gray-500">Fecha de emisión: {new Date().toLocaleDateString('es-ES')} {new Date().toLocaleTimeString('es-ES')}</p>
+                  </div>
+                </div>
+              </div>
+
+              {/* General Summary */}
+              <div className="grid grid-cols-3 gap-4 mb-8 bg-gray-50 p-4 border border-gray-200 rounded-lg">
+                <div className="text-center border-r border-gray-200">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Total Tickets</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">{totalTicketsCount}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">{totalCheckins} Check-ins / {totalNoCheckins} Pendientes</p>
+                </div>
+                <div className="text-center border-r border-gray-200">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Control de Acceso</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">
+                    {totalTicketsCount > 0 ? Math.round((totalCheckins / totalTicketsCount) * 100) : 0}%
+                  </p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Asistencia</p>
+                </div>
+                <div className="text-center">
+                  <p className="text-[10px] font-bold text-gray-500 uppercase tracking-wider">Recaudación Total</p>
+                  <p className="text-xl font-bold text-gray-900 mt-1">Bs. {totalRevenue}</p>
+                  <p className="text-[10px] text-gray-400 mt-0.5">Venta Puerta, Mesas y Online</p>
+                </div>
+              </div>
+
+              {/* Sectors Breakdown */}
+              <div className="space-y-8">
+                <h3 className="text-sm font-bold text-gray-800 border-b border-gray-300 pb-1 uppercase tracking-wider">Desglose por Sector</h3>
+                {groups.map(group => {
+                  if (group.data.filtered.length === 0) return null;
+                  
+                  return (
+                    <div key={group.name} className="border border-gray-200 rounded-lg overflow-hidden">
+                      <div className="bg-gray-100 px-4 py-2 border-b border-gray-200 flex justify-between items-center">
+                        <span className="font-bold text-xs uppercase text-gray-700">{group.label}</span>
+                        <span className="text-[10px] font-semibold text-gray-500">{group.data.filtered.length} Tickets</span>
+                      </div>
+                      <table className="w-full text-left text-xs border-collapse">
+                        <thead>
+                          <tr className="border-b border-gray-200 bg-gray-50 text-gray-600 font-semibold">
+                            <th className="py-2 px-4">Canal de Venta</th>
+                            <th className="py-2 px-4 text-center">Cantidad</th>
+                            <th className="py-2 px-4 text-right">Recaudación</th>
+                          </tr>
+                        </thead>
+                        <tbody>
+                          {Object.entries(group.data.sources).map(([source, resList]) => {
+                            if (resList.length === 0) return null;
+
+                            let money = 0;
+                            if (source === 'Mesa') {
+                              const uniqueTableIds = new Set(resList.map(r => r.table_id || r.zone_table_id).filter(Boolean));
+                              money = Array.from(uniqueTableIds).reduce((acc, tableId) => {
+                                if (!tableId) return acc;
+                                let tablePrice = 0;
+                                for (const z of zones || []) {
+                                  const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
+                                  if (table) {
+                                    tablePrice = table.price || 0;
+                                    break;
+                                  }
+                                }
+                                return acc + tablePrice;
+                              }, 0);
+                            } else {
+                              money = resList.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
+                            }
+
+                            return (
+                              <tr key={source} className="border-b border-gray-100">
+                                <td className="py-2.5 px-4 font-medium text-gray-800">{source}</td>
+                                <td className="py-2.5 px-4 text-center text-gray-600">{resList.length}</td>
+                                <td className="py-2.5 px-4 text-right font-semibold text-gray-800">
+                                  {source === 'Invitados (Admin)' || source === 'Free Pass' ? 'Sin Costo' : `Bs. ${money}`}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          );
+        })()}
+      </div>
 
     </motion.div>
   );
