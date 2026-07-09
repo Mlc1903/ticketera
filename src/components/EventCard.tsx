@@ -12,7 +12,10 @@ const fallbackImages = [eventNeon, eventReggaeton, eventTechno];
 export default function EventCard({ event, index }: { event: EventWithTickets; index: number }) {
   const ticketTypes = event.ticket_types || [];
   const totalSold = ticketTypes.reduce((sum, t) => sum + t.sold, 0);
-  const lowestPrice = ticketTypes.length ? Math.min(...ticketTypes.map((t) => t.price)) : 0;
+  
+  // Filtrar solo las entradas disponibles para todo público (no exclusivas de admin o staff/RRPP)
+  const publicTicketTypes = ticketTypes.filter((t) => !t.only_admin && !t.only_admin_exclusive);
+  const lowestPrice = publicTicketTypes.length ? Math.min(...publicTicketTypes.map((t) => t.price)) : 0;
   const capacityPercent = event.capacity > 0 ? Math.round((totalSold / event.capacity) * 100) : 0;
 
   const formattedDate = new Date(event.date + 'T' + event.time).toLocaleDateString('es-BO', {
@@ -39,9 +42,11 @@ export default function EventCard({ event, index }: { event: EventWithTickets; i
             />
             <div className="absolute inset-0 bg-gradient-to-t from-card via-transparent to-transparent" />
             <div className="absolute bottom-3 left-3 right-3 flex items-end justify-between">
-              <span className="rounded-lg bg-primary/90 px-2.5 py-1 text-xs font-semibold text-primary-foreground backdrop-blur-sm">
-                Desde Bs. {lowestPrice}
-              </span>
+              {publicTicketTypes.length > 0 && (
+                <span className="rounded-lg bg-primary/90 px-2.5 py-1 text-xs font-semibold text-primary-foreground backdrop-blur-sm">
+                  Desde Bs. {lowestPrice}
+                </span>
+              )}
               {/*<span className={`rounded-lg px-2.5 py-1 text-xs font-semibold backdrop-blur-sm ${
                 capacityPercent > 80 ? 'bg-destructive/90 text-destructive-foreground' : 'bg-success/90 text-success-foreground'
               }`}>
