@@ -25,6 +25,26 @@ export default function AdminDashboard() {
   const { data: zones, isLoading: zonesLoading } = useZones(orgId);
   const queryClient = useQueryClient();
 
+  const getMesaRevenue = (resList: any[]) => {
+    return resList.reduce((acc, r) => {
+      if (r.status !== 'active' && r.status !== 'used') return acc;
+      const tableId = r.table_id || r.zone_table_id;
+      if (!tableId) return acc;
+      
+      let table = null;
+      for (const z of zones || []) {
+        table = (z.tables_data as any[] || []).find(t => t.id === tableId);
+        if (table) break;
+      }
+      
+      if (!table) return acc;
+      
+      const limit = table.tickets_included || 1;
+      const unitPrice = (table.price || 0) / limit;
+      return acc + (r.quantity || 1) * unitPrice;
+    }, 0);
+  };
+
   // Event form state
   const [showEventForm, setShowEventForm] = useState(false);
   const [eventForm, setEventForm] = useState({ title: '', description: '', date: '', time: '', location: '', capacity: '', is_free_pass: false, free_pass_until: '', general_tables_count: '', vip_tables_count: '', allow_rrpp_guests: true, rrpp_guests_per_promoter: '', rrpp_vip_guests_per_promoter: '', consumo_general_requirement: '', consumo_vip_requirement: '', sales_general_requirement: '', sales_vip_requirement: '' });
@@ -1669,22 +1689,7 @@ export default function AdminDashboard() {
                             if (isFreePass(r) || isInvitado(r)) return acc;
                             if (isMesa(r)) return acc;
                             return acc + (r.ticket_types?.price || 0);
-                          }, 0) + (() => {
-                            const mesaRes = eventRes.filter(isMesa);
-                            const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id).filter(Boolean));
-                            return Array.from(uniqueTableIds).reduce((acc, tableId) => {
-                              if (!tableId) return acc;
-                              let tablePrice = 0;
-                              for (const z of zones || []) {
-                                const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
-                                if (table) {
-                                  tablePrice = table.price || 0;
-                                  break;
-                                }
-                              }
-                              return acc + tablePrice;
-                            }, 0);
-                          })();
+                          }, 0) + getMesaRevenue(eventRes.filter(isMesa));
                         })()}
                       </p>
                     </div>
@@ -1803,19 +1808,7 @@ export default function AdminDashboard() {
 
                             let money = 0;
                             if (source === 'Mesa') {
-                              const uniqueTableIds = new Set(resList.map(r => r.table_id || r.zone_table_id).filter(Boolean));
-                              money = Array.from(uniqueTableIds).reduce((acc, tableId) => {
-                                if (!tableId) return acc;
-                                let tablePrice = 0;
-                                for (const z of zones || []) {
-                                  const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
-                                  if (table) {
-                                    tablePrice = table.price || 0;
-                                    break;
-                                  }
-                                }
-                                return acc + tablePrice;
-                              }, 0);
+                              money = getMesaRevenue(resList);
                             } else {
                               money = resList.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
                             }
@@ -2175,20 +2168,8 @@ export default function AdminDashboard() {
               const puertaRevenue = puertaTickets.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
 
               const mesaRes = eventRes.filter(isMesa);
-              const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id).filter(Boolean));
               const mesaCount = mesaRes.length;
-              const mesaRevenue = Array.from(uniqueTableIds).reduce((acc, tableId) => {
-                if (!tableId) return acc;
-                let tablePrice = 0;
-                for (const z of zones || []) {
-                  const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
-                  if (table) {
-                    tablePrice = table.price || 0;
-                    break;
-                  }
-                }
-                return acc + tablePrice;
-              }, 0);
+              const mesaRevenue = getMesaRevenue(mesaRes);
 
               const onlineRRPPTickets = eventRes.filter(r => isOnline(r) || isRRPP(r));
               const onlineRRPPCount = onlineRRPPTickets.length;
@@ -2248,20 +2229,8 @@ export default function AdminDashboard() {
                 totalPuertaRevenue += puertaTickets.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
 
                 const mesaRes = eventRes.filter(isMesa);
-                const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id).filter(Boolean));
                 totalMesaCount += mesaRes.length;
-                totalMesaRevenue += Array.from(uniqueTableIds).reduce((acc, tableId) => {
-                  if (!tableId) return acc;
-                  let tablePrice = 0;
-                  for (const z of zones || []) {
-                    const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
-                    if (table) {
-                      tablePrice = table.price || 0;
-                      break;
-                    }
-                  }
-                  return acc + tablePrice;
-                }, 0);
+                totalMesaRevenue += getMesaRevenue(mesaRes);
 
                 const onlineRRPPTickets = eventRes.filter(r => isOnline(r) || isRRPP(r));
                 totalOnlineRRPPCount += onlineRRPPTickets.length;
@@ -2389,22 +2358,7 @@ export default function AdminDashboard() {
             if (isFreePass(r) || isInvitado(r)) return acc;
             if (isMesa(r)) return acc;
             return acc + (r.ticket_types?.price || 0);
-          }, 0) + (() => {
-            const mesaRes = eventRes.filter(isMesa);
-            const uniqueTableIds = new Set(mesaRes.map(r => r.table_id || r.zone_table_id).filter(Boolean));
-            return Array.from(uniqueTableIds).reduce((acc, tableId) => {
-              if (!tableId) return acc;
-              let tablePrice = 0;
-              for (const z of zones || []) {
-                const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
-                if (table) {
-                  tablePrice = table.price || 0;
-                  break;
-                }
-              }
-              return acc + tablePrice;
-            }, 0);
-          })();
+          }, 0) + getMesaRevenue(eventRes.filter(isMesa));
 
           return (
             <div>
@@ -2469,19 +2423,7 @@ export default function AdminDashboard() {
 
                             let money = 0;
                             if (source === 'Mesa') {
-                              const uniqueTableIds = new Set(resList.map(r => r.table_id || r.zone_table_id).filter(Boolean));
-                              money = Array.from(uniqueTableIds).reduce((acc, tableId) => {
-                                if (!tableId) return acc;
-                                let tablePrice = 0;
-                                for (const z of zones || []) {
-                                  const table = (z.tables_data as any[] || []).find(t => t.id === tableId);
-                                  if (table) {
-                                    tablePrice = table.price || 0;
-                                    break;
-                                  }
-                                }
-                                return acc + tablePrice;
-                              }, 0);
+                              money = getMesaRevenue(resList);
                             } else {
                               money = resList.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
                             }
