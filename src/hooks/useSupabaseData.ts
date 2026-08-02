@@ -170,6 +170,7 @@ export interface ZoneTable {
   radius: number;
   price?: number;
   tickets_included?: number;
+  is_shared?: boolean;
 }
 
 export interface OrganizationZone {

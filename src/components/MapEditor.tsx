@@ -138,6 +138,23 @@ export default function MapEditor({ imageUrl, initialTables = [], onSave, isSavi
                   className="w-full rounded-lg bg-secondary px-3 py-2 text-sm outline-none ring-1 ring-border focus:ring-primary text-foreground"
                 />
               </div>
+              <div className="flex items-start gap-2 py-1">
+                <input 
+                  type="checkbox" 
+                  id="table-is-shared"
+                  checked={selectedTable.is_shared || false}
+                  onChange={(e) => updateTable(selectedTable.id, { is_shared: e.target.checked })}
+                  className="mt-0.5 rounded border-border bg-secondary text-primary focus:ring-primary h-4 w-4"
+                />
+                <div className="space-y-0.5">
+                  <label htmlFor="table-is-shared" className="text-xs font-semibold text-foreground cursor-pointer">
+                    Mesa Compartida
+                  </label>
+                  <p className="text-[10px] text-muted-foreground leading-tight">
+                    Permite vender entradas individuales de esta mesa.
+                  </p>
+                </div>
+              </div>
               <button 
                 onClick={() => deleteTable(selectedTable.id)}
                 className="w-full flex items-center justify-center gap-2 rounded-lg bg-destructive/10 text-destructive hover:bg-destructive/20 px-3 py-2 text-sm font-medium transition-colors mt-2"

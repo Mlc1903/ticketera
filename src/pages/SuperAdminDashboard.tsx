@@ -159,22 +159,46 @@ export default function SuperAdminDashboard() {
            const { data: zones } = await supabase.from('organization_zones').select('tables_data');
            const allTables = zones?.flatMap(z => z.tables_data as ZoneTable[]) || [];
            const table = allTables.find(t => t.id === tt.zone_table_id);
-           if (table?.tickets_included) finalQtyForMesa = table.tickets_included;
-
-           // ACTIVATE PENDING MESA
-           const { data: existingPending } = await supabase
-             .from('reservations')
-             .select('id, guest_name')
-             .eq('event_id', req.event_id)
-             .eq('table_id', tt.zone_table_id)
-             .eq('status', 'pending')
-             .maybeSingle();
-
-           if (existingPending) {
-             await supabase.from('reservations').delete().eq('id', existingPending.id);
+           
+           const isShared = table?.is_shared === true;
+           if (!isShared && table?.tickets_included) {
+             finalQtyForMesa = table.tickets_included;
            }
 
-           const baseGuestName = req.buyer_name || existingPending?.guest_name || `Mesa - ${req.buyerProfile?.name || 'Cliente'}`;
+           let baseGuestName = req.buyer_name || `Mesa - ${req.buyerProfile?.name || 'Cliente'}`;
+
+           // ACTIVATE PENDING MESA
+           if (isShared) {
+             let pendingQuery = supabase
+               .from('reservations')
+               .select('id, guest_name')
+               .eq('event_id', req.event_id)
+               .eq('table_id', tt.zone_table_id)
+               .eq('status', 'pending');
+             
+             if (req.user_id) {
+               pendingQuery = pendingQuery.eq('user_id', req.user_id);
+             }
+             
+             const { data: pendingList } = await pendingQuery;
+             if (pendingList && pendingList.length > 0) {
+               baseGuestName = req.buyer_name || pendingList[0].guest_name || baseGuestName;
+               await supabase.from('reservations').delete().in('id', pendingList.map(r => r.id));
+             }
+           } else {
+             const { data: existingPending } = await supabase
+               .from('reservations')
+               .select('id, guest_name')
+               .eq('event_id', req.event_id)
+               .eq('table_id', tt.zone_table_id)
+               .eq('status', 'pending')
+               .maybeSingle();
+
+             if (existingPending) {
+               baseGuestName = req.buyer_name || existingPending.guest_name || baseGuestName;
+               await supabase.from('reservations').delete().eq('id', existingPending.id);
+             }
+           }
 
            for (let i = 0; i < finalQtyForMesa; i++) {
              const { data: codeData } = await supabase.rpc('generate_ticket_code', { 

@@ -27,7 +27,14 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   const [codes, setCodes] = useState<string[]>([]);
   const [loading, setLoading] = useState(false);
   const [showMap, setShowMap] = useState(false);
-  const [selectedTable, setSelectedTable] = useState<{ id: string, zoneName: string, label: string } | null>(null);
+  const [selectedTable, setSelectedTable] = useState<{ 
+    id: string; 
+    zoneName: string; 
+    label: string; 
+    is_shared?: boolean; 
+    price?: number; 
+    tickets_included?: number; 
+  } | null>(null);
   const [successMessage, setSuccessMessage] = useState<{ title: string, body: string } | null>(null);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [buyerName, setBuyerName] = useState('');
@@ -58,7 +65,14 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
     return true;
   });
 
-  const total = visibleTicketTypes.reduce((sum, tt) => sum + (quantities[tt.id] || 0) * tt.price, 0);
+  const total = visibleTicketTypes.reduce((sum, tt) => {
+    const qty = quantities[tt.id] || 0;
+    if (tt.type === 'mesa_vip' && selectedTable?.is_shared) {
+      const unitPrice = (selectedTable.price || 0) / (selectedTable.tickets_included || 1);
+      return sum + qty * unitPrice;
+    }
+    return sum + qty * tt.price;
+  }, 0);
   const totalQty = Object.values(quantities).reduce((s, q) => s + q, 0);
 
   const hasFreePass = visibleTicketTypes.some(tt => tt.type === 'rrpp_free' && (quantities[tt.id] || 0) > 0);
@@ -177,11 +191,27 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
         user_id: user.id,
         rrpp_id: asRRPP ? user.id : null,
         buyer_name: asRRPP ? buyerName.trim() : null,
-        ticket_types: typesToRequest.map(tt => ({
-          ...tt,
-          zone_table_id: tt.type === 'mesa_vip' && selectedTable ? selectedTable.id : null
-        })),
-        total_amount: typesToRequest.reduce((acc, t) => acc + (t.price * t.quantity), 0),
+        ticket_types: typesToRequest.map(tt => {
+          if (tt.type === 'mesa_vip' && selectedTable?.is_shared) {
+            const unitPrice = (selectedTable.price || 0) / (selectedTable.tickets_included || 1);
+            return {
+              ...tt,
+              price: unitPrice,
+              zone_table_id: selectedTable.id
+            };
+          }
+          return {
+            ...tt,
+            zone_table_id: tt.type === 'mesa_vip' && selectedTable ? selectedTable.id : null
+          };
+        }),
+        total_amount: typesToRequest.reduce((acc, t) => {
+          if (t.type === 'mesa_vip' && selectedTable?.is_shared) {
+            const unitPrice = (selectedTable.price || 0) / (selectedTable.tickets_included || 1);
+            return acc + (unitPrice * t.quantity);
+          }
+          return acc + (t.price * t.quantity);
+        }, 0),
         receipt_url: publicUrl
       });
 
@@ -365,7 +395,11 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
                    organizationId={eventData.organization_id} 
                    eventId={eventId} 
                    selectedTableId={selectedTable?.id || null} 
-                   onSelectTable={(id, zone, label) => id ? setSelectedTable({ id, zoneName: zone, label }) : setSelectedTable(null)} 
+                   onSelectTable={(table, zone) => setSelectedTable(table ? { ...table, zoneName: zone } : null)} 
+                   requiredQty={(() => {
+                     const mesaVipType = visibleTicketTypes.find(tt => tt.type === 'mesa_vip');
+                     return mesaVipType ? (quantities[mesaVipType.id] || 0) : 1;
+                   })()}
                  />
                  <div className="mt-4 flex justify-end">
                    <button onClick={() => setShowMap(false)} disabled={!selectedTable} className="rounded-xl bg-primary px-6 py-2 text-sm font-semibold text-primary-foreground disabled:opacity-40 hover:shadow-glow">

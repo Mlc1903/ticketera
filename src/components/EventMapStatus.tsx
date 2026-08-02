@@ -1,6 +1,6 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { motion } from 'framer-motion';
-import { ShoppingCart, CheckCircle2, XCircle, Info, Loader2 } from 'lucide-react';
+import { ShoppingCart, CheckCircle2, XCircle, Info, Loader2, Plus, Minus } from 'lucide-react';
 import { supabase } from '@/integrations/supabase/client';
 import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { toast } from 'sonner';
@@ -20,6 +20,12 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
   const [selectedTable, setSelectedTable] = useState<ZoneTable | null>(null);
   const [selling, setSelling] = useState(false);
   const [guestName, setGuestName] = useState('');
+  const [qtyToBuy, setQtyToBuy] = useState(1);
+
+  useEffect(() => {
+    setQtyToBuy(1);
+    setGuestName('');
+  }, [selectedTable]);
 
   // Fetch reservations for this specific zone/event
   const { data: reservations, isLoading } = useQuery({
@@ -35,8 +41,23 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
     },
   });
 
-  const isTableSold = (tableId: string) => {
-    return reservations?.some(r => r.table_id === tableId && (r.status === 'active' || r.status === 'used'));
+  const getTableReservationStats = (tableId: string, limit: number) => {
+    const tableRes = reservations?.filter(
+      r => r.table_id === tableId && (r.status === 'active' || r.status === 'used' || r.status === 'pending')
+    ) || [];
+    const totalSold = tableRes.reduce((sum, r) => sum + (r.quantity || 0), 0);
+    return {
+      sold: totalSold,
+      available: Math.max(0, limit - totalSold),
+    };
+  };
+
+  const isTableSold = (table: ZoneTable) => {
+    if (table.is_shared) {
+      const stats = getTableReservationStats(table.id, table.tickets_included || 1);
+      return stats.available <= 0;
+    }
+    return reservations?.some(r => r.table_id === table.id && (r.status === 'active' || r.status === 'used' || r.status === 'pending'));
   };
 
 
@@ -78,17 +99,24 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
         ticketType = newType;
       }
 
+      const limit = selectedTable.tickets_included || 1;
+      const unitPrice = selectedTable.is_shared ? ((selectedTable.price || 0) / limit) : (selectedTable.price || 0);
+      const totalPrice = selectedTable.is_shared ? unitPrice * qtyToBuy : (selectedTable.price || 0);
+      const qty = selectedTable.is_shared ? qtyToBuy : 1;
+      const resQty = selectedTable.is_shared ? qtyToBuy : limit;
+      const guestNameForRes = `${selectedTable.label} - ${guestName || 'Pendiente'}${selectedTable.is_shared ? ` (${qtyToBuy} ent.)` : ''}`;
+
       // Create purchase request
       const { error } = await supabase.from('purchase_requests' as any).insert({
         event_id: eventId,
         user_id: user.id,
-        total_amount: selectedTable.price || 0,
+        total_amount: totalPrice,
         status: 'pending',
         ticket_types: [{
           ticket_type_id: ticketType.id,
-          name: `${selectedTable.label} - Mesa`,
-          price: selectedTable.price || 0,
-          quantity: 1,
+          name: `${selectedTable.label} - Mesa${selectedTable.is_shared ? ' (Compartida)' : ''}`,
+          price: unitPrice,
+          quantity: qty,
           type: 'mesa_vip',
           zone_table_id: selectedTable.id
         }]
@@ -103,9 +131,9 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
         event_id: eventId,
         ticket_type_id: ticketType.id,
         user_id: user.id,
-        guest_name: `${selectedTable.label} - ${guestName || 'Pendiente'}`,
+        guest_name: guestNameForRes,
         type: 'mesa_vip',
-        quantity: selectedTable.tickets_included || 1,
+        quantity: resQty,
         table_id: selectedTable.id,
         zone_table_id: selectedTable.id, // Write both!
         status: 'pending'
@@ -138,13 +166,22 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
   }
 
   if (showPayment) {
+    const limit = selectedTable?.tickets_included || 1;
+    const unitPrice = selectedTable?.is_shared ? ((selectedTable.price || 0) / limit) : (selectedTable?.price || 0);
+    const totalPrice = selectedTable?.is_shared ? unitPrice * qtyToBuy : (selectedTable?.price || 0);
+
     return (
       <motion.div initial={{ opacity: 0, scale: 0.95 }} animate={{ opacity: 1, scale: 1 }} className="glass-card p-6 space-y-4 max-w-sm mx-auto">
         <h3 className="text-lg font-bold text-foreground text-center uppercase tracking-wider">Pago de Mesa</h3>
         <div className="bg-secondary/50 p-3 rounded-xl border border-border text-center">
           <p className="text-xs text-muted-foreground uppercase font-bold">Mesa Seleccionada</p>
-          <p className="text-lg font-black text-foreground">{selectedTable?.label}</p>
-          <p className="text-primary font-bold text-xl">Bs. {selectedTable?.price}</p>
+          <p className="text-lg font-black text-foreground">{selectedTable?.label} {selectedTable?.is_shared ? '(Compartida)' : ''}</p>
+          <p className="text-primary font-bold text-xl">Bs. {totalPrice.toFixed(2)}</p>
+          {selectedTable?.is_shared && (
+            <p className="text-xs text-muted-foreground mt-1">
+              {qtyToBuy} {qtyToBuy === 1 ? 'entrada' : 'entradas'} de esta mesa
+            </p>
+          )}
         </div>
         
         <p className="text-xs text-muted-foreground text-center">Escanea el QR para realizar la transferencia bancaria:</p>
@@ -220,50 +257,97 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
             </div>
           </div>
 
-          {selectedTable && (
-            <motion.div 
-              initial={{ opacity: 0, y: 10 }}
-              animate={{ opacity: 1, y: 0 }}
-              className="glass-card p-5 space-y-4 ring-2 ring-primary/20 shadow-glow border-primary/20"
-            >
-              <div>
-                <p className="text-[10px] font-black text-primary uppercase tracking-widest">Mesa Seleccionada</p>
-                <h4 className="text-2xl font-black text-foreground">{selectedTable.label}</h4>
-                <div className="flex items-center justify-between mt-1">
-                  <p className="text-lg font-black text-foreground">Bs. {selectedTable.price || 0}</p>
-                  <span className="text-[10px] bg-secondary px-2 py-1 rounded-lg font-bold text-muted-foreground">
-                    {selectedTable.tickets_included || 0} Entradas
-                  </span>
-                </div>
-              </div>
+          {selectedTable && (() => {
+            const limit = selectedTable.tickets_included || 1;
+            const stats = getTableReservationStats(selectedTable.id, limit);
+            const unitPrice = selectedTable.is_shared ? ((selectedTable.price || 0) / limit) : (selectedTable.price || 0);
+            const totalPrice = selectedTable.is_shared ? unitPrice * qtyToBuy : (selectedTable.price || 0);
+            const sold = isTableSold(selectedTable);
 
-              {!isTableSold(selectedTable.id) ? (
-                <div className="space-y-3">
-                  <div className="space-y-1">
-                    <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Nombre para el Ticket</label>
-                    <input 
-                      placeholder="Tu nombre completo" 
-                      value={guestName}
-                      onChange={(e) => setGuestName(e.target.value)}
-                      className="w-full rounded-xl bg-secondary px-4 py-3 text-sm outline-none ring-1 ring-border focus:ring-primary text-foreground"
-                    />
+            return (
+              <motion.div 
+                initial={{ opacity: 0, y: 10 }}
+                animate={{ opacity: 1, y: 0 }}
+                className="glass-card p-5 space-y-4 ring-2 ring-primary/20 shadow-glow border-primary/20"
+              >
+                <div>
+                  <p className="text-[10px] font-black text-primary uppercase tracking-widest flex items-center justify-between">
+                    <span>Mesa Seleccionada</span>
+                    {selectedTable.is_shared && <span className="bg-primary/20 text-primary px-1.5 py-0.5 rounded font-black text-[8px]">COMPARTIDA</span>}
+                  </p>
+                  <h4 className="text-2xl font-black text-foreground">{selectedTable.label}</h4>
+                  <div className="flex items-center justify-between mt-1">
+                    <p className="text-lg font-black text-foreground">
+                      Bs. {totalPrice.toFixed(2)}
+                    </p>
+                    <span className="text-[10px] bg-secondary px-2 py-1 rounded-lg font-bold text-muted-foreground">
+                      {selectedTable.is_shared 
+                        ? `${stats.available} de ${limit} disp.`
+                        : `${limit} Entradas`
+                      }
+                    </span>
                   </div>
-                  <button 
-                    onClick={() => setShowPayment(true)}
-                    className="w-full rounded-xl bg-primary py-3.5 text-sm font-black text-primary-foreground hover:shadow-glow transition-all active:scale-[0.98] flex items-center justify-center gap-2 uppercase tracking-tight"
-                  >
-                    <ShoppingCart className="h-4 w-4" />
-                    Reservar Mesa
-                  </button>
+                  {selectedTable.is_shared && (
+                    <p className="text-[10px] text-muted-foreground mt-1 font-medium">
+                      Precio individual: Bs. {unitPrice.toFixed(2)} por entrada
+                    </p>
+                  )}
                 </div>
-              ) : (
-                <div className="rounded-xl bg-destructive/10 p-4 flex flex-col items-center gap-2 text-destructive border border-destructive/20">
-                  <XCircle className="h-6 w-6" />
-                  <span className="text-xs font-black uppercase tracking-tighter">Esta mesa ya no está disponible</span>
-                </div>
-              )}
-            </motion.div>
-          )}
+
+                {!sold ? (
+                  <div className="space-y-3">
+                    {selectedTable.is_shared && (
+                      <div className="space-y-1 bg-secondary/30 p-2.5 rounded-xl border border-border/40">
+                        <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1 block">
+                          Entradas a comprar / vender
+                        </label>
+                        <div className="flex items-center justify-between mt-1 px-1">
+                          <button 
+                            type="button"
+                            onClick={() => setQtyToBuy(prev => Math.max(1, prev - 1))}
+                            disabled={qtyToBuy <= 1}
+                            className="h-8 w-8 rounded-lg bg-secondary text-foreground hover:bg-card-hover disabled:opacity-30 flex items-center justify-center transition-colors"
+                          >
+                            <Minus className="h-4 w-4" />
+                          </button>
+                          <span className="text-base font-bold text-foreground">{qtyToBuy}</span>
+                          <button 
+                            type="button"
+                            onClick={() => setQtyToBuy(prev => Math.min(stats.available, prev + 1))}
+                            disabled={qtyToBuy >= stats.available}
+                            className="h-8 w-8 rounded-lg bg-primary text-primary-foreground disabled:opacity-30 flex items-center justify-center transition-colors"
+                          >
+                            <Plus className="h-4 w-4" />
+                          </button>
+                        </div>
+                      </div>
+                    )}
+                    <div className="space-y-1">
+                      <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Nombre para el Ticket</label>
+                      <input 
+                        placeholder="Tu nombre completo" 
+                        value={guestName}
+                        onChange={(e) => setGuestName(e.target.value)}
+                        className="w-full rounded-xl bg-secondary px-4 py-3 text-sm outline-none ring-1 ring-border focus:ring-primary text-foreground"
+                      />
+                    </div>
+                    <button 
+                      onClick={() => setShowPayment(true)}
+                      className="w-full rounded-xl bg-primary py-3.5 text-sm font-black text-primary-foreground hover:shadow-glow transition-all active:scale-[0.98] flex items-center justify-center gap-2 uppercase tracking-tight"
+                    >
+                      <ShoppingCart className="h-4 w-4" />
+                      {selectedTable.is_shared ? 'Reservar Entrada(s)' : 'Reservar Mesa'}
+                    </button>
+                  </div>
+                ) : (
+                  <div className="rounded-xl bg-destructive/10 p-4 flex flex-col items-center gap-2 text-destructive border border-destructive/20">
+                    <XCircle className="h-6 w-6" />
+                    <span className="text-xs font-black uppercase tracking-tighter">Esta mesa ya no está disponible</span>
+                  </div>
+                )}
+              </motion.div>
+            );
+          })()}
         </div>
 
         {/* Map Container */}
@@ -277,8 +361,9 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
             />
             
             {(zone.tables_data as ZoneTable[] || []).map(table => {
-              const sold = isTableSold(table.id);
+              const sold = isTableSold(table);
               const selected = selectedTable?.id === table.id;
+              const stats = table.is_shared ? getTableReservationStats(table.id, table.tickets_included || 1) : null;
               
               return (
                 <button
@@ -303,7 +388,12 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
                     <span className="text-[7px] md:text-[11px] font-black truncate px-0.5 uppercase tracking-tighter drop-shadow-md">
                       {table.label}
                     </span>
-                    {!sold && !selected && (
+                    {table.is_shared && stats && (
+                      <span className="text-[5px] md:text-[8px] font-bold text-white/95 tracking-tighter drop-shadow-md">
+                        {stats.sold}/{table.tickets_included || 1}
+                      </span>
+                    )}
+                    {!sold && !selected && !table.is_shared && (
                       <span className="text-[5px] md:text-[8px] font-bold opacity-0 group-hover/btn:opacity-100 transition-opacity drop-shadow-md">
                         Bs.{table.price}
                       </span>

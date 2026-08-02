@@ -6,10 +6,11 @@ interface InteractiveMapSelectorProps {
   organizationId: string;
   eventId: string;
   selectedTableId: string | null;
-  onSelectTable: (tableId: string | null, zoneName: string, label: string) => void;
+  onSelectTable: (table: any | null, zoneName: string) => void;
+  requiredQty?: number;
 }
 
-export default function InteractiveMapSelector({ organizationId, eventId, selectedTableId, onSelectTable }: InteractiveMapSelectorProps) {
+export default function InteractiveMapSelector({ organizationId, eventId, selectedTableId, onSelectTable, requiredQty = 1 }: InteractiveMapSelectorProps) {
   const { data: zones, isLoading: zonesLoading } = useZones(organizationId);
   const { data: reservations, isLoading: resLoading } = useReservations({ eventId });
   const [activeZoneIdx, setActiveZoneIdx] = useState(0);
@@ -25,13 +26,26 @@ export default function InteractiveMapSelector({ organizationId, eventId, select
   const activeZone = zones[activeZoneIdx];
   const tables = activeZone?.tables_data || [];
 
-  // Get occupied table IDs for this event
-  // A table is occupied if there's an active or used reservation for it
-  const occupiedTableIds = new Set(
-    reservations
-      ?.filter((r: any) => r.zone_table_id && (r.status === 'active' || r.status === 'used'))
-      .map((r: any) => r.zone_table_id)
-  );
+  const getTableReservationStats = (table: any) => {
+    const tableRes = reservations?.filter((r: any) => 
+      (r.zone_table_id === table.id || r.table_id === table.id) && 
+      (r.status === 'active' || r.status === 'used' || r.status === 'pending')
+    ) || [];
+    const totalSold = tableRes.reduce((sum: number, r: any) => sum + (r.quantity || 0), 0);
+    const limit = table.tickets_included || 1;
+    return {
+      sold: totalSold,
+      available: Math.max(0, limit - totalSold),
+    };
+  };
+
+  const isTableOccupied = (table: any) => {
+    const stats = getTableReservationStats(table);
+    if (table.is_shared) {
+      return stats.available < requiredQty;
+    }
+    return stats.sold > 0;
+  };
 
   return (
     <div className="space-y-4">
@@ -65,7 +79,8 @@ export default function InteractiveMapSelector({ organizationId, eventId, select
         />
         
         {tables.map(table => {
-          const isOccupied = occupiedTableIds.has(table.id);
+          const stats = getTableReservationStats(table);
+          const isOccupied = isTableOccupied(table);
           const isSelected = selectedTableId === table.id;
 
           let bgClass = 'bg-success/80 border-success-foreground/50 text-success-foreground';
@@ -78,9 +93,9 @@ export default function InteractiveMapSelector({ organizationId, eventId, select
               onClick={(e) => {
                 e.preventDefault();
                 if (isOccupied) return;
-                onSelectTable(isSelected ? null : table.id, activeZone.name, table.label);
+                onSelectTable(isSelected ? null : table, activeZone.name);
               }}
-              className={`absolute flex items-center justify-center border-2 shadow-sm transition-all hover:scale-105 active:scale-95 ${bgClass} ${!isOccupied && !isSelected ? 'hover:bg-success hover:z-10' : ''}`}
+              className={`absolute flex flex-col items-center justify-center border-2 shadow-sm transition-all hover:scale-105 active:scale-95 ${bgClass} ${!isOccupied && !isSelected ? 'hover:bg-success hover:z-10' : ''}`}
               style={{
                 left: `calc(${table.x}% - ${table.radius}%)`,
                 top: `calc(${table.y}% - ${table.radius}%)`,
@@ -89,7 +104,12 @@ export default function InteractiveMapSelector({ organizationId, eventId, select
                 borderRadius: '50%',
               }}
             >
-              <span className="text-[10px] md:text-xs font-bold truncate max-w-full px-1">{table.label}</span>
+              <span className="text-[9px] md:text-xs font-black truncate max-w-full px-1">{table.label}</span>
+              {table.is_shared && (
+                <span className="text-[6px] md:text-[8px] font-bold text-white/95 leading-none">
+                  {stats.available}/{table.tickets_included}
+                </span>
+              )}
             </button>
           );
         })}
