@@ -104,7 +104,7 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
       const totalPrice = selectedTable.is_shared ? unitPrice * qtyToBuy : (selectedTable.price || 0);
       const qty = selectedTable.is_shared ? qtyToBuy : 1;
       const resQty = selectedTable.is_shared ? qtyToBuy : limit;
-      const guestNameForRes = `${selectedTable.label} - ${guestName || 'Pendiente'}${selectedTable.is_shared ? ` (${qtyToBuy} ent.)` : ''}`;
+      const guestNameForRes = `${selectedTable.label} - ${guestName || 'Pendiente'}`;
 
       // Create purchase request
       const { error } = await supabase.from('purchase_requests' as any).insert({
@@ -118,7 +118,8 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
           price: unitPrice,
           quantity: qty,
           type: 'mesa_vip',
-          zone_table_id: selectedTable.id
+          zone_table_id: selectedTable.id,
+          guest_name: guestNameForRes
         }]
       });
 

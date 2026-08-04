@@ -171,7 +171,7 @@ export default function SuperAdminDashboard() {
            if (isShared) {
              let pendingQuery = supabase
                .from('reservations')
-               .select('id, guest_name')
+               .select('id, guest_name, quantity')
                .eq('event_id', req.event_id)
                .eq('table_id', tt.zone_table_id)
                .eq('status', 'pending');
@@ -182,8 +182,11 @@ export default function SuperAdminDashboard() {
              
              const { data: pendingList } = await pendingQuery;
              if (pendingList && pendingList.length > 0) {
-               baseGuestName = req.buyer_name || pendingList[0].guest_name || baseGuestName;
-               await supabase.from('reservations').delete().in('id', pendingList.map(r => r.id));
+               const matchingPending = (tt.guest_name && pendingList.find(r => r.guest_name === tt.guest_name))
+                 || pendingList.find(r => r.quantity === finalQtyForMesa)
+                 || pendingList[0];
+               baseGuestName = req.buyer_name || matchingPending.guest_name || baseGuestName;
+               await supabase.from('reservations').delete().eq('id', matchingPending.id);
              }
            } else {
              const { data: existingPending } = await supabase
