@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap, QrCode, X, Share2, Printer } from 'lucide-react';
+import { Shield, BarChart3, ScanLine, Calendar, Users, Ticket, Loader2, Plus, UserPlus, Trash2, DollarSign, CheckCircle, MapPin, Edit, ArrowLeft, Zap, QrCode, X, Share2, Printer, RefreshCw } from 'lucide-react';
 import { motion } from 'framer-motion';
 import { useEvents, useReservations, useOrgMembers, useZones, ZoneTable, useScanners, useTicketCategories } from '@/hooks/useSupabaseData';
 import { useAuth } from '@/hooks/useAuth';
@@ -510,6 +510,27 @@ export default function AdminDashboard() {
     }
   };
 
+  const handleFixOldCourtesies = async () => {
+    try {
+      const { data, error } = await supabase
+        .from('reservations')
+        .update({ rrpp_id: null })
+        .is('user_id', null)
+        .not('rrpp_id', 'is', null)
+        .neq('type', 'rrpp_free')
+        .neq('type', 'mesa_vip')
+        .select();
+
+      if (error) throw error;
+
+      toast.success(`Cortesías corregidas con éxito: ${data?.length || 0} entradas actualizadas`);
+      queryClient.invalidateQueries({ queryKey: ['reservations'] });
+    } catch (err: any) {
+      console.error('Error al corregir cortesías:', err);
+      toast.error('Error al corregir cortesías: ' + err.message);
+    }
+  };
+
   const handleBulkGenerate = async () => {
     if (!bulkGenForm.eventId || !bulkGenForm.ticketTypeId || !orgId) {
       toast.error('Selecciona un evento y un tipo de entrada primero');
@@ -542,7 +563,7 @@ export default function AdminDashboard() {
           type: ticketType.type,
           status: 'active',
           quantity: 1,
-          rrpp_id: user?.id
+          rrpp_id: null
         });
       }
 
@@ -1194,7 +1215,7 @@ export default function AdminDashboard() {
                         eventId={selectedEvent.id} 
                         eventTitle={selectedEvent.title} 
                         ticketTypes={selectedEvent.ticket_types || []} 
-                        asRRPP={true} 
+                        asAdmin={true} 
                       />
                     </div>
                   );
@@ -1547,6 +1568,15 @@ export default function AdminDashboard() {
                   <Ticket className="h-4 w-4" />
                   {generatingBulk ? 'Generando...' : 'Generar Entradas'}
                 </button>
+                {userRole === 'super_admin' && (
+                  <button
+                    onClick={handleFixOldCourtesies}
+                    className="w-full mt-2 rounded-xl border border-warning/30 bg-warning/5 py-2 text-xs font-semibold text-warning hover:bg-warning/10 transition-all flex items-center justify-center gap-1.5 active:scale-[0.98]"
+                  >
+                    <RefreshCw className="h-3.5 w-3.5" />
+                    Corregir Cortesías Históricas
+                  </button>
+                )}
                 {generatingBulk && <div className="text-center text-xs text-primary mt-2 animate-pulse">Generando...</div>}
               </div>
 
@@ -1681,9 +1711,10 @@ export default function AdminDashboard() {
                           const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
                           const isFreePass = (r: any) => r.type === 'rrpp_free';
                           const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
-                          const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
-                          const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
-                          const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
+                          const isVentaAdmin = (r: any) => !r.rrpp_id && r.user_id && adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+                          const isOnline = (r: any) => !r.rrpp_id && r.user_id && !adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+                          const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+                          const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && !isVentaAdmin(r) && (!!r.guest_name || r.rrpp_id);
 
                           return eventRes.reduce((acc, r) => {
                             if (isFreePass(r) || isInvitado(r)) return acc;
@@ -1712,9 +1743,10 @@ export default function AdminDashboard() {
                 const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
                 const isFreePass = (r: any) => r.type === 'rrpp_free';
                 const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
-                const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
-                const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
-                const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
+                const isVentaAdmin = (r: any) => !r.rrpp_id && r.user_id && adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+                const isOnline = (r: any) => !r.rrpp_id && r.user_id && !adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+                const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+                const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && !isVentaAdmin(r) && (!!r.guest_name || r.rrpp_id);
 
                 const getReservationCategory = (r: any) => {
                   if (isMesa(r)) {
@@ -1743,7 +1775,8 @@ export default function AdminDashboard() {
                     'Free Pass': filtered.filter(isFreePass),
                     'Mesa': filtered.filter(isMesa),
                     'RRPP': filtered.filter(isRRPP),
-                    'Puerta': filtered.filter(isPuerta)
+                    'Puerta': filtered.filter(isPuerta),
+                    'Venta Admin': filtered.filter(isVentaAdmin)
                   };
 
                   return { filtered, sources };
@@ -2144,7 +2177,7 @@ export default function AdminDashboard() {
           <thead>
             <tr className="border-b-2 border-gray-800 bg-gray-100">
               <th className="py-3 px-2 font-bold uppercase text-gray-700">Evento / Fecha</th>
-              <th className="py-3 px-2 font-bold uppercase text-gray-700 text-right">Venta Puerta</th>
+              <th className="py-3 px-2 font-bold uppercase text-gray-700 text-right">Puerta / Admin</th>
               <th className="py-3 px-2 font-bold uppercase text-gray-700 text-right">Venta Mesas</th>
               <th className="py-3 px-2 font-bold uppercase text-gray-700 text-right">Online / RRPP</th>
               <th className="py-3 px-2 font-bold uppercase text-gray-700 text-center">Cortesías</th>
@@ -2159,11 +2192,12 @@ export default function AdminDashboard() {
               const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
               const isFreePass = (r: any) => r.type === 'rrpp_free';
               const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
-              const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
-              const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
-              const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
+              const isVentaAdmin = (r: any) => !r.rrpp_id && r.user_id && adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+              const isOnline = (r: any) => !r.rrpp_id && r.user_id && !adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+              const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+              const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && !isVentaAdmin(r) && (!!r.guest_name || r.rrpp_id);
 
-              const puertaTickets = eventRes.filter(isPuerta);
+              const puertaTickets = eventRes.filter(r => isPuerta(r) || isVentaAdmin(r));
               const puertaCount = puertaTickets.length;
               const puertaRevenue = puertaTickets.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
 
@@ -2220,11 +2254,12 @@ export default function AdminDashboard() {
                 const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
                 const isFreePass = (r: any) => r.type === 'rrpp_free';
                 const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
-                const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
-                const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
-                const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
+                const isVentaAdmin = (r: any) => !r.rrpp_id && r.user_id && adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+                const isOnline = (r: any) => !r.rrpp_id && r.user_id && !adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+                const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+                const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && !isVentaAdmin(r) && (!!r.guest_name || r.rrpp_id);
 
-                const puertaTickets = eventRes.filter(isPuerta);
+                const puertaTickets = eventRes.filter(r => isPuerta(r) || isVentaAdmin(r));
                 totalPuertaCount += puertaTickets.length;
                 totalPuertaRevenue += puertaTickets.reduce((acc, r) => acc + (r.ticket_types?.price || 0), 0);
 
@@ -2278,9 +2313,10 @@ export default function AdminDashboard() {
           const isMesa = (r: any) => r.type === 'mesa_vip' && (!!r.zone_table_id || !!r.table_id);
           const isFreePass = (r: any) => r.type === 'rrpp_free';
           const isRRPP = (r: any) => r.rrpp_id && eventAssignments.some(a => a.user_id === r.rrpp_id) && r.guest_name !== 'Venta Puerta' && !isMesa(r) && !isFreePass(r);
-          const isOnline = (r: any) => !r.rrpp_id && r.user_id && !isMesa(r) && !isFreePass(r);
-          const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (!r.guest_name && r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
-          const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && (!!r.guest_name || r.rrpp_id);
+          const isVentaAdmin = (r: any) => !r.rrpp_id && r.user_id && adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+          const isOnline = (r: any) => !r.rrpp_id && r.user_id && !adminMemberIds.includes(r.user_id) && !isMesa(r) && !isFreePass(r);
+          const isPuerta = (r: any) => r.guest_name === 'Venta Puerta' || (r.rrpp_id && !eventAssignments.some(a => a.user_id === r.rrpp_id));
+          const isInvitado = (r: any) => !isMesa(r) && !isFreePass(r) && !isRRPP(r) && !isOnline(r) && !isPuerta(r) && !isVentaAdmin(r) && (!!r.guest_name || r.rrpp_id);
 
           const getReservationCategory = (r: any) => {
             if (isMesa(r)) {
@@ -2309,7 +2345,8 @@ export default function AdminDashboard() {
               'Free Pass': filtered.filter(isFreePass),
               'Mesa': filtered.filter(isMesa),
               'RRPP': filtered.filter(isRRPP),
-              'Puerta': filtered.filter(isPuerta)
+              'Puerta': filtered.filter(isPuerta),
+              'Venta Admin': filtered.filter(isVentaAdmin)
             };
 
             return { filtered, sources };

@@ -404,3 +404,57 @@ CREATE INDEX idx_org_members_user ON public.org_members(user_id);
 CREATE INDEX idx_org_members_org ON public.org_members(organization_id);
 CREATE INDEX idx_events_org ON public.events(organization_id);
 CREATE INDEX idx_rrpp_assignments_org ON public.rrpp_assignments(organization_id);
+
+-- Trigger to automatically update ticket_types.sold when reservations are added, updated, or deleted
+CREATE OR REPLACE FUNCTION public.update_ticket_type_sold()
+RETURNS TRIGGER AS $$
+BEGIN
+  IF (TG_OP = 'INSERT') THEN
+    UPDATE public.ticket_types
+    SET sold = (
+      SELECT COALESCE(SUM(quantity), 0)
+      FROM public.reservations
+      WHERE ticket_type_id = NEW.ticket_type_id
+        AND (status = 'active' OR status = 'used')
+    )
+    WHERE id = NEW.ticket_type_id;
+  ELSIF (TG_OP = 'UPDATE') THEN
+    UPDATE public.ticket_types
+    SET sold = (
+      SELECT COALESCE(SUM(quantity), 0)
+      FROM public.reservations
+      WHERE ticket_type_id = NEW.ticket_type_id
+        AND (status = 'active' OR status = 'used')
+    )
+    WHERE id = NEW.ticket_type_id;
+
+    IF (OLD.ticket_type_id <> NEW.ticket_type_id) THEN
+      UPDATE public.ticket_types
+      SET sold = (
+        SELECT COALESCE(SUM(quantity), 0)
+        FROM public.reservations
+        WHERE ticket_type_id = OLD.ticket_type_id
+          AND (status = 'active' OR status = 'used')
+      )
+      WHERE id = OLD.ticket_type_id;
+    END IF;
+  ELSIF (TG_OP = 'DELETE') THEN
+    UPDATE public.ticket_types
+    SET sold = (
+      SELECT COALESCE(SUM(quantity), 0)
+      FROM public.reservations
+      WHERE ticket_type_id = OLD.ticket_type_id
+        AND (status = 'active' OR status = 'used')
+    )
+    WHERE id = OLD.ticket_type_id;
+  END IF;
+  RETURN NULL;
+END;
+$$ LANGUAGE plpgsql SECURITY DEFINER SET search_path = public;
+
+DROP TRIGGER IF EXISTS trg_update_ticket_type_sold ON public.reservations;
+CREATE TRIGGER trg_update_ticket_type_sold
+  AFTER INSERT OR UPDATE OR DELETE ON public.reservations
+  FOR EACH ROW
+  EXECUTE FUNCTION public.update_ticket_type_sold();
+

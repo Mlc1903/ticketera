@@ -17,9 +17,10 @@ interface Props {
   eventId: string;
   eventTitle: string;
   asRRPP?: boolean;
+  asAdmin?: boolean;
 }
 
-export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRPP }: Props) {
+export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRPP, asAdmin }: Props) {
   const [quantities, setQuantities] = useState<Record<string, number>>({});
   const [showPayment, setShowPayment] = useState(false);
   const [qrDownloaded, setQrDownloaded] = useState(false);
@@ -53,7 +54,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   };
 
   const isAdmin = !!(user && (hasRole('admin') || hasRole('super_admin')));
-  const isStaff = asRRPP || !!(user && (hasRole('admin') || hasRole('super_admin') || hasRole('rrpp')));
+  const isStaff = asRRPP || asAdmin || !!(user && (hasRole('admin') || hasRole('super_admin') || hasRole('rrpp')));
   
   const visibleTicketTypes = ticketTypes.filter(tt => {
     if (tt.only_admin_exclusive) {
@@ -158,7 +159,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
       }
 
       // 2. Normal Request flow for remaining tickets
-      if (asRRPP && !buyerName.trim()) {
+      if ((asRRPP || asAdmin) && !buyerName.trim()) {
         toast.error("Debes ingresar el nombre del cliente");
         setLoading(false);
         return;
@@ -189,8 +190,8 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
       const { error } = await supabase.from('purchase_requests' as any).insert({
         event_id: eventId,
         user_id: user.id,
-        rrpp_id: asRRPP ? user.id : null,
-        buyer_name: asRRPP ? buyerName.trim() : null,
+        rrpp_id: asAdmin ? null : (asRRPP ? user.id : null),
+        buyer_name: (asRRPP || asAdmin) ? buyerName.trim() : null,
         ticket_types: typesToRequest.map(tt => {
           if (tt.type === 'mesa_vip' && selectedTable?.is_shared) {
             const unitPrice = (selectedTable.price || 0) / (selectedTable.tickets_included || 1);
@@ -290,18 +291,18 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           <Download className="h-4 w-4" /> 1. Descargar QR
         </button>
 
-         {asRRPP && (
-           <div className="mt-4 space-y-2">
-             <label className="text-sm font-semibold text-foreground">Nombre del Cliente / Destinatario *</label>
-             <input 
-               type="text" 
-               placeholder="Nombre completo del cliente"
-               className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary transition-all"
-               value={buyerName}
-               onChange={(e) => setBuyerName(e.target.value)}
-             />
-           </div>
-         )}
+          {(asRRPP || asAdmin) && (
+            <div className="mt-4 space-y-2">
+              <label className="text-sm font-semibold text-foreground">Nombre del Cliente / Destinatario *</label>
+              <input 
+                type="text" 
+                placeholder="Nombre completo del cliente"
+                className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary transition-all"
+                value={buyerName}
+                onChange={(e) => setBuyerName(e.target.value)}
+              />
+            </div>
+          )}
 
          <div className="mt-4 space-y-2">
            <label className="text-sm font-semibold text-foreground">Sube tu comprobante de pago *</label>
@@ -313,11 +314,11 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
            />
          </div>
 
-         <button 
-            onClick={handleRequestPurchase}
-            disabled={loading || !qrDownloaded || !receiptImage || (asRRPP && !buyerName.trim())}
-            className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 mt-4"
-         >
+          <button 
+             onClick={handleRequestPurchase}
+             disabled={loading || !qrDownloaded || !receiptImage || ((asRRPP || asAdmin) && !buyerName.trim())}
+             className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 mt-4"
+          >
            {loading ? 'Enviando...' : '2. Verificar Pago'}
          </button>
        </motion.div>
