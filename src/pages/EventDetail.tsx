@@ -59,7 +59,7 @@ export default function EventDetail() {
           <span className="flex items-center gap-1.5"><Calendar className="h-4 w-4 text-primary" />{formattedDate}</span>
           <span className="flex items-center gap-1.5"><Clock className="h-4 w-4 text-primary" />{event.time?.substring(0, 5)} hrs</span>
           <span className="flex items-center gap-1.5"><MapPin className="h-4 w-4 text-primary" />{event.location}</span>
-          <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-primary" />{event.capacity - totalSold} lugares disponibles</span>
+          {/* <span className="flex items-center gap-1.5"><Users className="h-4 w-4 text-primary" />{event.capacity - totalSold} lugares disponibles</span> */}
         </div>
         <p className="text-sm text-muted-foreground leading-relaxed">{event.description}</p>
       </div>

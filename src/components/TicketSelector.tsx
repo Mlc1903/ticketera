@@ -338,7 +338,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
             <div key={tt.id} className={`flex items-center justify-between rounded-xl bg-secondary p-3 ${(soldOut || isConflictDisabled) ? 'opacity-50' : ''}`}>
               <div>
                 <p className="font-medium text-foreground text-sm">{tt.name}</p>
-                <p className="text-xs text-muted-foreground">Bs. {tt.price} · {available} disponibles</p>
+                <p className="text-xs text-muted-foreground">Bs. {tt.price}{/* · {available} disponibles */}</p>
                 {tt.type === 'rrpp_free' && eventData?.free_pass_until && (
                   <p className="text-[10px] text-primary font-semibold mt-0.5">
                     Ingreso válido hasta las {eventData.free_pass_until.substring(0, 5)} hrs
