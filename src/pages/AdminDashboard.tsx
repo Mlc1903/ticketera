@@ -62,6 +62,7 @@ export default function AdminDashboard() {
 
   // RRPP assign state
   const [rrppEmail, setRrppEmail] = useState('');
+  const [rrppCity, setRrppCity] = useState('');
   const [assigningRRPP, setAssigningRRPP] = useState(false);
   const [rrppZone, setRrppZone] = useState('');
   const [isTeamLeader, setIsTeamLeader] = useState(false);
@@ -349,10 +350,12 @@ export default function AdminDashboard() {
         zone_type: rrppZone || null,
         is_team_leader: isTeamLeader,
         created_by: user?.id,
+        city: rrppCity.trim() || null,
       });
       if (error) throw error;
       toast.success('RRPP asignado');
       setRrppEmail('');
+      setRrppCity('');
       setIsTeamLeader(false);
       setRrppZone('');
       queryClient.invalidateQueries({ queryKey: ['admin-rrpp-assignments'] });
@@ -1239,6 +1242,12 @@ export default function AdminDashboard() {
           <div className="glass-card p-4 space-y-3">
             <h3 className="font-bold text-sm">Asignar RRPP</h3>
             <input placeholder="Email" value={rrppEmail} onChange={(e) => setRrppEmail(e.target.value)} className="w-full rounded-xl bg-secondary px-4 py-3 text-sm" />
+            <input
+              placeholder="Ciudad"
+              value={rrppCity}
+              onChange={(e) => setRrppCity(e.target.value)}
+              className="w-full rounded-xl bg-secondary px-4 py-3 text-sm ring-1 ring-border focus:ring-primary outline-none transition-all"
+            />
             <div className="grid grid-cols-2 gap-2">
               <div className="flex items-center gap-2 px-1">
                 <input type="checkbox" id="tl" checked={isTeamLeader} onChange={(e) => setIsTeamLeader(e.target.checked)} className="rounded border-border text-primary focus:ring-primary" />
@@ -1268,6 +1277,11 @@ export default function AdminDashboard() {
                     {a.zone_type && (
                       <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type?.toLowerCase().includes('vip') ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-primary/20 text-primary border border-primary/30'}`}>
                         {a.zone_type}
+                      </span>
+                    )}
+                    {(a as any).city && (
+                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">
+                        📍 {(a as any).city}
                       </span>
                     )}
                   </div>

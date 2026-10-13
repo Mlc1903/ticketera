@@ -248,6 +248,7 @@ export type Database = {
       }
       rrpp_assignments: {
         Row: {
+          city: string | null
           created_at: string
           created_by: string | null
           event_id: string | null
@@ -259,6 +260,7 @@ export type Database = {
           zone_type: string | null
         }
         Insert: {
+          city?: string | null
           created_at?: string
           created_by?: string | null
           event_id?: string | null
@@ -270,6 +272,7 @@ export type Database = {
           zone_type?: string | null
         }
         Update: {
+          city?: string | null
           created_at?: string
           created_by?: string | null
           event_id?: string | null
