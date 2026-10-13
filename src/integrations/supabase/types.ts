@@ -258,6 +258,7 @@ export type Database = {
           unique_code: string
           user_id: string
           zone_type: string | null
+          zone_type_active: boolean
         }
         Insert: {
           city?: string | null
@@ -270,6 +271,7 @@ export type Database = {
           unique_code: string
           user_id: string
           zone_type?: string | null
+          zone_type_active?: boolean
         }
         Update: {
           city?: string | null
@@ -282,6 +284,7 @@ export type Database = {
           unique_code?: string
           user_id?: string
           zone_type?: string | null
+          zone_type_active?: boolean
         }
         Relationships: [
           {

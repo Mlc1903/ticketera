@@ -66,6 +66,9 @@ export default function AdminDashboard() {
   const [assigningRRPP, setAssigningRRPP] = useState(false);
   const [rrppZone, setRrppZone] = useState('');
   const [isTeamLeader, setIsTeamLeader] = useState(false);
+  const [editingRRPPId, setEditingRRPPId] = useState<string | null>(null);
+  const [editRRPPForm, setEditRRPPForm] = useState<{ city: string; zone_type: string; zone_type_active: boolean }>({ city: '', zone_type: '', zone_type_active: true });
+  const [savingRRPP, setSavingRRPP] = useState(false);
   const [zoneVisibility, setZoneVisibility] = useState('all');
   const [zoneCategory, setZoneCategory] = useState<string>('');
   const [statusEventId, setStatusEventId] = useState<string | null>(null);
@@ -441,6 +444,28 @@ export default function AdminDashboard() {
       toast.success('RRPP removido');
       queryClient.invalidateQueries({ queryKey: ['admin-rrpp-assignments'] });
     }
+  };
+
+  const handleUpdateRRPP = async () => {
+    if (!editingRRPPId) return;
+    setSavingRRPP(true);
+    try {
+      const { error } = await supabase
+        .from('rrpp_assignments')
+        .update({
+          city: editRRPPForm.city.trim() || null,
+          zone_type: editRRPPForm.zone_type || null,
+          zone_type_active: editRRPPForm.zone_type_active,
+        })
+        .eq('id', editingRRPPId);
+      if (error) throw error;
+      toast.success('RRPP actualizado');
+      setEditingRRPPId(null);
+      queryClient.invalidateQueries({ queryKey: ['admin-rrpp-assignments'] });
+    } catch (err: any) {
+      toast.error(err.message || 'Error al actualizar');
+    }
+    setSavingRRPP(false);
   };
 
   const handleCreateZone = async () => {
@@ -1268,28 +1293,132 @@ export default function AdminDashboard() {
             </div>
             <button onClick={handleAssignRRPP} className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-white hover:shadow-glow transition-all active:scale-[0.98]">Asignar</button>
           </div>
+
           <div className="space-y-2">
-            {rrppAssignments?.map(a => (
-              <div key={a.id} className="glass-card p-3 flex justify-between items-center">
-                <div>
-                  <div className="flex items-center gap-2">
-                    <p className="text-sm font-bold">{a.profile?.name} {a.is_team_leader && '(TL)'}</p>
-                    {a.zone_type && (
-                      <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded ${a.zone_type?.toLowerCase().includes('vip') ? 'bg-warning/20 text-warning border border-warning/30' : 'bg-primary/20 text-primary border border-primary/30'}`}>
-                        {a.zone_type}
-                      </span>
-                    )}
-                    {(a as any).city && (
-                      <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">
-                        📍 {(a as any).city}
-                      </span>
-                    )}
+            {rrppAssignments?.map(a => {
+              const isEditing = editingRRPPId === a.id;
+              const zoneActive = (a as any).zone_type_active !== false;
+              return (
+                <div key={a.id} className={`glass-card p-3 space-y-3 transition-all ${!zoneActive ? 'opacity-60' : ''}`}>
+                  {/* Header row */}
+                  <div className="flex justify-between items-start">
+                    <div className="space-y-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-bold">{a.profile?.name} {a.is_team_leader && '(TL)'}</p>
+                        {a.zone_type && (
+                          <span className={`text-[9px] font-black uppercase px-1.5 py-0.5 rounded border ${
+                            !zoneActive
+                              ? 'bg-muted/20 text-muted-foreground border-muted/30 line-through'
+                              : a.zone_type?.toLowerCase().includes('vip')
+                                ? 'bg-warning/20 text-warning border-warning/30'
+                                : 'bg-primary/20 text-primary border-primary/30'
+                          }`}>
+                            {a.zone_type}{!zoneActive && ' (inactivo)'}
+                          </span>
+                        )}
+                        {(a as any).city && (
+                          <span className="text-[9px] font-bold uppercase px-1.5 py-0.5 rounded bg-secondary text-muted-foreground border border-border">
+                            📍 {(a as any).city}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-muted-foreground">Por: {a.creatorProfile?.name || 'Admin'}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      {userRole === 'super_admin' && (
+                        <button
+                          onClick={() => {
+                            if (isEditing) {
+                              setEditingRRPPId(null);
+                            } else {
+                              setEditingRRPPId(a.id);
+                              setEditRRPPForm({
+                                city: (a as any).city || '',
+                                zone_type: a.zone_type || '',
+                                zone_type_active: (a as any).zone_type_active !== false,
+                              });
+                            }
+                          }}
+                          className={`rounded-lg px-2.5 py-1.5 text-[10px] font-bold transition-all ${
+                            isEditing
+                              ? 'bg-secondary text-muted-foreground hover:text-foreground'
+                              : 'bg-primary/10 text-primary hover:bg-primary/20'
+                          }`}
+                        >
+                          {isEditing ? 'Cancelar' : 'Editar'}
+                        </button>
+                      )}
+                      <button onClick={() => handleDeleteRRPP(a.id)} className="text-destructive hover:text-destructive/70 transition-colors p-1">
+                        <Trash2 className="h-4 w-4" />
+                      </button>
+                    </div>
                   </div>
-                  <p className="text-xs text-muted-foreground">Por: {a.creatorProfile?.name || 'Admin'}</p>
+
+                  {/* Edit form — only super_admin */}
+                  {isEditing && userRole === 'super_admin' && (
+                    <motion.div
+                      initial={{ opacity: 0, height: 0 }}
+                      animate={{ opacity: 1, height: 'auto' }}
+                      exit={{ opacity: 0, height: 0 }}
+                      className="space-y-2 border-t border-border pt-3"
+                    >
+                      <div className="grid grid-cols-2 gap-2">
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Ciudad</label>
+                          <input
+                            placeholder="Ciudad"
+                            value={editRRPPForm.city}
+                            onChange={(e) => setEditRRPPForm(prev => ({ ...prev, city: e.target.value }))}
+                            className="w-full rounded-xl bg-secondary px-3 py-2 text-xs ring-1 ring-border focus:ring-primary outline-none transition-all"
+                          />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-[10px] font-bold text-muted-foreground uppercase ml-1">Rango</label>
+                          <select
+                            value={editRRPPForm.zone_type}
+                            onChange={(e) => setEditRRPPForm(prev => ({ ...prev, zone_type: e.target.value }))}
+                            className="w-full rounded-xl bg-secondary px-3 py-2 text-xs ring-1 ring-border focus:ring-primary outline-none transition-all"
+                          >
+                            <option value="">Sin rango</option>
+                            {ticketCategories?.map((cat: any) => (
+                              <option key={cat.id} value={cat.name.toLowerCase()}>
+                                {cat.name}
+                              </option>
+                            ))}
+                          </select>
+                        </div>
+                      </div>
+
+                      {editRRPPForm.zone_type && (
+                        <label className="flex items-center gap-2.5 cursor-pointer group px-1">
+                          <div
+                            onClick={() => setEditRRPPForm(prev => ({ ...prev, zone_type_active: !prev.zone_type_active }))}
+                            className={`relative w-9 h-5 rounded-full transition-colors cursor-pointer ${
+                              editRRPPForm.zone_type_active ? 'bg-primary' : 'bg-muted'
+                            }`}
+                          >
+                            <span className={`absolute top-0.5 left-0.5 w-4 h-4 rounded-full bg-white shadow transition-transform ${
+                              editRRPPForm.zone_type_active ? 'translate-x-4' : 'translate-x-0'
+                            }`} />
+                          </div>
+                          <span className="text-xs font-medium text-foreground">
+                            Rango {editRRPPForm.zone_type_active ? 'activo' : 'desactivado'}
+                          </span>
+                        </label>
+                      )}
+
+                      <button
+                        onClick={handleUpdateRRPP}
+                        disabled={savingRRPP}
+                        className="w-full rounded-xl bg-primary py-2.5 text-xs font-bold text-white hover:shadow-glow transition-all active:scale-[0.98] disabled:opacity-50"
+                      >
+                        {savingRRPP ? 'Guardando...' : 'Guardar cambios'}
+                      </button>
+                    </motion.div>
+                  )}
                 </div>
-                <button onClick={() => handleDeleteRRPP(a.id)} className="text-destructive"><Trash2 className="h-4 w-4" /></button>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
