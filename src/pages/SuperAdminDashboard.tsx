@@ -219,6 +219,7 @@ export default function SuperAdminDashboard() {
                ticket_type_id: tt.ticket_type_id,
                user_id: req.user_id,
                rrpp_id: req.rrpp_id,
+               seller_name: req.seller_name || null,
                guest_name: guestNameForTicket,
                type: 'mesa_vip',
                quantity: 1, // Individual ticket
@@ -241,7 +242,8 @@ export default function SuperAdminDashboard() {
               ticket_type_id: tt.ticket_type_id,
               user_id: req.user_id,
               rrpp_id: req.rrpp_id,
-              guest_name: req.buyer_name || req.buyerProfile?.name || 'Cliente',
+              seller_name: req.seller_name || null,
+              guest_name: req.buyer_name || (req.seller_name ? null : (req.buyerProfile?.name || 'Cliente')),
               type: tt.type,
               quantity: 1, // Individual ticket
               status: 'active'

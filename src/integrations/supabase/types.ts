@@ -196,6 +196,7 @@ export type Database = {
           id: string
           quantity: number
           rrpp_id: string | null
+          seller_name: string | null
           status: Database["public"]["Enums"]["ticket_status"]
           ticket_type_id: string
           type: Database["public"]["Enums"]["ticket_type"]
@@ -210,6 +211,7 @@ export type Database = {
           id?: string
           quantity?: number
           rrpp_id?: string | null
+          seller_name?: string | null
           status?: Database["public"]["Enums"]["ticket_status"]
           ticket_type_id: string
           type?: Database["public"]["Enums"]["ticket_type"]
@@ -224,6 +226,7 @@ export type Database = {
           id?: string
           quantity?: number
           rrpp_id?: string | null
+          seller_name?: string | null
           status?: Database["public"]["Enums"]["ticket_status"]
           ticket_type_id?: string
           type?: Database["public"]["Enums"]["ticket_type"]

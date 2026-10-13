@@ -190,7 +190,14 @@ export default function MyTickets() {
                       <h2 className="font-bold text-white text-xl uppercase leading-tight tracking-wide">{event?.title || 'Evento'}</h2>
                       <p className="text-gray-300 mt-1">{event?.location || 'Ubicación no especificada'}</p>
                       <p className="text-gray-300">{r.quantity || 1} entrada(s) - <span className="font-medium text-white uppercase">{r.type === 'mesa_vip' ? `MESA - ${(r.ticket_types?.name || 'VIP').toUpperCase()}` : (r.ticket_types?.name || r.type?.replace('_', ' '))}</span></p>
-                      {r.guest_name && (() => {
+                      {r.seller_name ? (
+                        <div className="mt-1 space-y-0.5">
+                          <p className="text-sm text-gray-300"><span className="font-bold text-white">RRPP:</span> {r.seller_name}</p>
+                          {r.guest_name && (
+                            <p className="text-sm text-gray-300"><span className="font-bold text-white">Cliente:</span> {r.guest_name}</p>
+                          )}
+                        </div>
+                      ) : r.guest_name && (() => {
                         const parts = r.guest_name.split(' - ');
                         const displayName = parts.length >= 2 ? parts[1] : r.guest_name;
                         return (

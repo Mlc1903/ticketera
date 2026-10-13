@@ -39,6 +39,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
   const [successMessage, setSuccessMessage] = useState<{ title: string, body: string } | null>(null);
   const [receiptImage, setReceiptImage] = useState<File | null>(null);
   const [buyerName, setBuyerName] = useState('');
+  const [sellerName, setSellerName] = useState('');
   
   const { user, hasRole } = useAuth();
   const queryClient = useQueryClient();
@@ -159,7 +160,13 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
       }
 
       // 2. Normal Request flow for remaining tickets
-      if ((asRRPP || asAdmin) && !buyerName.trim()) {
+      if (asRRPP && !sellerName.trim()) {
+        toast.error("Debes ingresar el nombre del RRPP");
+        setLoading(false);
+        return;
+      }
+
+      if (asAdmin && !asRRPP && !buyerName.trim()) {
         toast.error("Debes ingresar el nombre del cliente");
         setLoading(false);
         return;
@@ -191,7 +198,8 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
         event_id: eventId,
         user_id: user.id,
         rrpp_id: asAdmin ? null : (asRRPP ? user.id : null),
-        buyer_name: (asRRPP || asAdmin) ? buyerName.trim() : null,
+        buyer_name: (asRRPP || asAdmin) ? (buyerName.trim() || null) : null,
+        seller_name: asRRPP ? sellerName.trim() : null,
         ticket_types: typesToRequest.map(tt => {
           if (tt.type === 'mesa_vip' && selectedTable?.is_shared) {
             const unitPrice = (selectedTable.price || 0) / (selectedTable.tickets_included || 1);
@@ -244,7 +252,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
             Ver mis Tickets
           </Link>
         </div>
-        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setReceiptImage(null); setQuantities({}); setSuccessMessage(null); setBuyerName(''); }} className="w-full text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mt-2">
+        <button onClick={() => { setPurchased(false); setShowPayment(false); setQrDownloaded(false); setReceiptImage(null); setQuantities({}); setSuccessMessage(null); setBuyerName(''); setSellerName(''); }} className="w-full text-sm font-semibold text-muted-foreground hover:text-foreground transition-colors mt-2">
           Volver al Evento
         </button>
       </motion.div>
@@ -291,9 +299,22 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           <Download className="h-4 w-4" /> 1. Descargar QR
         </button>
 
+          {asRRPP && (
+            <div className="mt-4 space-y-2">
+              <label className="text-sm font-semibold text-foreground">Nombre del RRPP *</label>
+              <input 
+                type="text" 
+                placeholder="Nombre del RRPP que vende"
+                className="w-full rounded-xl bg-secondary px-4 py-3 text-sm text-foreground placeholder:text-muted-foreground outline-none ring-1 ring-border focus:ring-primary transition-all"
+                value={sellerName}
+                onChange={(e) => setSellerName(e.target.value)}
+              />
+            </div>
+          )}
+
           {(asRRPP || asAdmin) && (
             <div className="mt-4 space-y-2">
-              <label className="text-sm font-semibold text-foreground">Nombre del Cliente / Destinatario *</label>
+              <label className="text-sm font-semibold text-foreground">Nombre del Cliente {asRRPP ? <span className="text-muted-foreground font-normal">(opcional)</span> : '*'}</label>
               <input 
                 type="text" 
                 placeholder="Nombre completo del cliente"
@@ -316,7 +337,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
 
           <button 
              onClick={handleRequestPurchase}
-             disabled={loading || !qrDownloaded || !receiptImage || ((asRRPP || asAdmin) && !buyerName.trim())}
+             disabled={loading || !qrDownloaded || !receiptImage || (asRRPP ? !sellerName.trim() : (asAdmin && !buyerName.trim()))}
              className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 mt-4"
           >
            {loading ? 'Enviando...' : '2. Verificar Pago'}

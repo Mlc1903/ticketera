@@ -13,7 +13,9 @@ import TicketSelector from '@/components/TicketSelector';
 import { Info } from 'lucide-react';
 import { QRCodeSVG } from 'qrcode.react';
 
-type Tab = 'overview' | 'checkin' | 'events' | 'zones' | 'rrpp' | 'personal' | 'sales' | 'consumo' | 'scanners';
+import SalesByCity from '@/components/SalesByCity';
+
+type Tab = 'overview' | 'checkin' | 'events' | 'zones' | 'rrpp' | 'personal' | 'sales' | 'ventas' | 'consumo' | 'scanners';
 
 export default function AdminDashboard() {
   const [tab, setTab] = useState<Tab>('overview');
@@ -119,6 +121,7 @@ export default function AdminDashboard() {
     { value: 'rrpp', label: 'RRPP', icon: Users },
     { value: 'personal', label: 'Personal', icon: Shield },
     { value: 'sales', label: 'Gestión', icon: DollarSign },
+    { value: 'ventas', label: 'Ventas', icon: Ticket },
     { value: 'consumo', label: 'Consumo', icon: Zap },
     { value: 'scanners', label: 'Accesos', icon: ScanLine },
   ];
@@ -745,6 +748,10 @@ export default function AdminDashboard() {
       )}
 
       {tab === 'checkin' && <CheckInScanner />}
+
+      {tab === 'ventas' && (
+        <SalesByCity events={events || []} reservations={orgReservations} rrppAssignments={rrppAssignments || []} />
+      )}
 
       {tab === 'events' && (
         <div className="space-y-4">
