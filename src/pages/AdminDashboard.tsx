@@ -154,6 +154,21 @@ export default function AdminDashboard() {
     enabled: !!orgId,
   });
 
+  // Sales logged at "Verificar Pago" time (no approval required)
+  const { data: rrppSales } = useQuery({
+    queryKey: ['admin-rrpp-sales', orgId],
+    queryFn: async () => {
+      const { data, error } = await supabase
+        .from('rrpp_sales' as any)
+        .select('*')
+        .order('created_at', { ascending: true });
+      if (error) throw error;
+      return data || [];
+    },
+    enabled: !!orgId,
+    refetchInterval: 15000,
+  });
+
   // Fetch roles for org members to identify guardias and puertas
   const memberIds = orgMembers?.map(m => m.user_id) || [];
   const { data: memberRoles } = useQuery({
@@ -750,7 +765,7 @@ export default function AdminDashboard() {
       {tab === 'checkin' && <CheckInScanner />}
 
       {tab === 'ventas' && (
-        <SalesByCity events={events || []} reservations={orgReservations} rrppAssignments={rrppAssignments || []} />
+        <SalesByCity events={events || []} reservations={orgReservations} rrppAssignments={rrppAssignments || []} sales={(rrppSales as any[]) || []} />
       )}
 
       {tab === 'events' && (

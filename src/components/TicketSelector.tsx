@@ -225,6 +225,28 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
       });
 
       if (error) throw error;
+
+      // Log the sale immediately (no approval needed) for the Ventas panel
+      if (asRRPP) {
+        const paid = typesToRequest.filter(t => t.type !== 'rrpp_free');
+        const saleQty = paid.reduce((a, t) => a + t.quantity, 0);
+        const saleAmount = paid.reduce((acc, t) => {
+          if (t.type === 'mesa_vip' && selectedTable?.is_shared) {
+            return acc + ((selectedTable.price || 0) / (selectedTable.tickets_included || 1)) * t.quantity;
+          }
+          return acc + t.price * t.quantity;
+        }, 0);
+        if (saleQty > 0) {
+          const { error: saleErr } = await supabase.from('rrpp_sales' as any).insert({
+            event_id: eventId,
+            rrpp_id: user.id,
+            seller_name: sellerName.trim(),
+            quantity: saleQty,
+            total_amount: saleAmount,
+          });
+          if (saleErr) console.error('Error registrando venta', saleErr);
+        }
+      }
       
       setSuccessMessage({
         title: "¡Solicitud en Proceso!",
