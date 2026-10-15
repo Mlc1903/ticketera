@@ -59,6 +59,25 @@ export default function SalesByCity({ events, reservations, rrppAssignments, sal
 
   const detail = rows.find((r) => r.id === selectedTL);
 
+  // Quick event summary: one row per ticket type (all cities)
+  const summary = useMemo(() => {
+    if (!eventId) return [];
+    const map = new Map<string, { name: string; price: number; qty: number; amount: number }>();
+    reservations
+      .filter((r) => r.event_id === eventId && (r.status === 'active' || r.status === 'used') && r.type !== 'rrpp_free')
+      .forEach((r) => {
+        const key = r.ticket_type_id || r.ticket_types?.name || 'sin-tipo';
+        const price = Number(r.ticket_types?.price || 0);
+        const q = r.quantity || 1;
+        const cur = map.get(key) || { name: r.ticket_types?.name || 'Sin tipo', price, qty: 0, amount: 0 };
+        cur.qty += q;
+        cur.amount += q * price;
+        map.set(key, cur);
+      });
+    return Array.from(map.values()).sort((a, b) => b.amount - a.amount);
+  }, [eventId, reservations]);
+  const summaryTotals = summary.reduce((acc, s) => ({ qty: acc.qty + s.qty, amount: acc.amount + s.amount }), { qty: 0, amount: 0 });
+
   const totals = rows.reduce((acc, r) => ({ qty: acc.qty + r.qty, amount: acc.amount + r.amount }), { qty: 0, amount: 0 });
 
   return (
@@ -80,6 +99,49 @@ export default function SalesByCity({ events, reservations, rrppAssignments, sal
           ))}
         </select>
       </div>
+
+      {/* Event quick summary by ticket type */}
+      {eventId && (
+        <motion.div key={`sum-${eventId}`} initial={{ opacity: 0, y: 10 }} animate={{ opacity: 1, y: 0 }} className="glass-card p-4 space-y-3">
+          <h3 className="text-sm font-semibold text-foreground flex items-center gap-2">
+            <Ticket className="h-4 w-4 text-primary" /> Resumen rápido del evento
+          </h3>
+          {summary.length === 0 ? (
+            <p className="text-sm text-muted-foreground text-center py-4">Aún no hay entradas vendidas para este evento.</p>
+          ) : (
+            <div className="overflow-hidden rounded-xl ring-1 ring-border">
+              <table className="w-full text-sm">
+                <thead className="bg-secondary/80 text-xs uppercase tracking-wider text-muted-foreground">
+                  <tr>
+                    <th className="text-left px-4 py-3">Tipo de entrada</th>
+                    <th className="text-center px-4 py-3">Vendidas</th>
+                    <th className="text-right px-4 py-3">Total</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {summary.map((s) => (
+                    <tr key={s.name} className="border-t border-border hover:bg-secondary/40 transition-colors">
+                      <td className="px-4 py-3 font-medium text-foreground">
+                        {s.name}
+                        <p className="text-[10px] text-muted-foreground">Bs. {s.price.toLocaleString('es-BO')} c/u</p>
+                      </td>
+                      <td className="px-4 py-3 text-center text-lg font-bold text-primary">{s.qty}</td>
+                      <td className="px-4 py-3 text-right font-bold text-success">Bs. {s.amount.toLocaleString('es-BO')}</td>
+                    </tr>
+                  ))}
+                </tbody>
+                <tfoot className="bg-secondary/60 border-t border-border">
+                  <tr>
+                    <td className="px-4 py-3 font-bold text-foreground">Total</td>
+                    <td className="px-4 py-3 text-center font-bold text-foreground">{summaryTotals.qty}</td>
+                    <td className="px-4 py-3 text-right font-bold text-foreground">Bs. {summaryTotals.amount.toLocaleString('es-BO')}</td>
+                  </tr>
+                </tfoot>
+              </table>
+            </div>
+          )}
+        </motion.div>
+      )}
 
       {/* Step 2: city */}
       {eventId && (
