@@ -237,12 +237,17 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
           return acc + t.price * t.quantity;
         }, 0);
         if (saleQty > 0) {
-          const { error: saleErr } = await supabase.from('rrpp_sales' as any).insert({
-            event_id: eventId,
-            rrpp_id: user.id,
-            seller_name: sellerName.trim(),
-            quantity: saleQty,
-            total_amount: saleAmount,
+          const items = paid.reduce<Record<string, number>>((acc, t) => {
+            acc[t.ticket_type_id] = (acc[t.ticket_type_id] || 0) + t.quantity;
+            return acc;
+          }, {});
+          // Merges into the existing row if this RRPP name was already registered
+          const { error: saleErr } = await (supabase.rpc as any)('register_rrpp_sale', {
+            _event_id: eventId,
+            _seller_name: sellerName.trim(),
+            _items: items,
+            _quantity: saleQty,
+            _amount: saleAmount,
           });
           if (saleErr) console.error('Error registrando venta', saleErr);
         }
@@ -318,7 +323,7 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
            }}
            className="w-full rounded-xl bg-secondary py-3 text-sm font-semibold text-foreground transition-all hover:bg-secondary/80 flex justify-center items-center gap-2 border border-border"
         >
-          <Download className="h-4 w-4" /> 1. Descargar QR
+          <Download className="h-4 w-4" /> {qrDownloaded ? 'QR Descargado' : 'Descargar QR (opcional)'}
         </button>
 
           {asRRPP && (
@@ -359,10 +364,10 @@ export default function TicketSelector({ ticketTypes, eventId, eventTitle, asRRP
 
           <button 
              onClick={handleRequestPurchase}
-             disabled={loading || !qrDownloaded || !receiptImage || (asRRPP ? !sellerName.trim() : (asAdmin && !buyerName.trim()))}
+             disabled={loading || !receiptImage || (asRRPP ? !sellerName.trim() : (asAdmin && !buyerName.trim()))}
              className="w-full touch-target rounded-xl bg-primary py-3 text-sm font-semibold text-primary-foreground transition-all hover:shadow-glow active:scale-[0.98] disabled:opacity-40 mt-4"
           >
-           {loading ? 'Enviando...' : '2. Verificar Pago'}
+           {loading ? 'Enviando...' : 'Verificar Pago'}
          </button>
        </motion.div>
     );

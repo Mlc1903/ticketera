@@ -218,15 +218,15 @@ export default function EventMapStatus({ eventId, zone, asAdmin = false }: Props
            }}
            className="w-full rounded-xl bg-secondary py-3 text-xs font-bold text-foreground border border-border hover:bg-secondary/80 transition-all"
         >
-          1. Descargar QR
+          {qrDownloaded ? 'QR Descargado' : 'Descargar QR (opcional)'}
         </button>
 
         <button 
            onClick={handleRequestTable}
-           disabled={selling || !qrDownloaded}
+           disabled={selling}
            className="w-full rounded-xl bg-primary py-3 text-sm font-bold text-primary-foreground shadow-glow disabled:opacity-40 transition-all"
         >
-          {selling ? 'Enviando...' : '2. Ya realicé el Pago'}
+          {selling ? 'Enviando...' : 'Ya realicé el Pago'}
         </button>
         
         <button onClick={() => setShowPayment(false)} className="w-full text-xs text-muted-foreground font-medium hover:text-foreground">
